@@ -1,39 +1,55 @@
-import { Role } from "@prisma/client";
+import { RequestStatus, Role } from "@prisma/client";
 
-export type User = {
+export interface SessionUser {
   id: string;
-  name: string;
   email: string;
+  name?: string;
   role: Role;
-};
+}
 
-export type RequestStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED";
+export interface AuthUser {
+  id: string;
+  role: Role;
+}
 
-export type MustGoRequest = {
+export interface RequestDetail {
   id: string;
   shipmentNumber: string;
-  partNumberId: string;
+  partNumbers: string[];
   palletCount: number;
   status: RequestStatus;
-  routeInfo?: string;
-  additionalNotes?: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
+  routeInfo?: string | null;
+  additionalNotes?: string | null;
+  notes: string[];
+  createdAt: string;
+  creator: {
+    name: string;
+    email: string;
+    role: string;
+  };
+  logs: RequestLog[];
+}
 
-export type PartNumber = {
+export interface RequestLog {
   id: string;
-  partNumber: string;
-  description?: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type RequestLog = {
-  id: string;
-  mustGoRequestId: string;
   action: string;
-  performedBy: string;
-  timestamp: Date;
-};
+  timestamp: string;
+  performer: {
+    name: string;
+    role: string;
+  };
+}
+
+export interface FormData {
+  shipmentNumber: string;
+  partNumbers: string[];
+  palletCount: number;
+  routeInfo?: string | null;
+  additionalNotes?: string | null;
+  status?: RequestStatus;
+}
+
+export interface UpdateRequestData {
+  status?: RequestStatus;
+  note?: string;
+}

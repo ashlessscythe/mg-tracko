@@ -14,33 +14,17 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-
-interface Request {
-  id: string;
-  shipmentNumber: string;
-  partNumber: {
-    partNumber: string;
-    description?: string | null;
-  };
-  palletCount: number;
-  status: RequestStatus;
-  routeInfo?: string | null;
-  createdAt: string;
-  creator: {
-    name: string;
-    role: string;
-  };
-}
+import type { RequestDetail } from "@/lib/types";
 
 type SortableField = keyof Pick<
-  Request,
+  RequestDetail,
   "shipmentNumber" | "palletCount" | "status" | "createdAt"
 >;
 
 export default function RequestList() {
   const router = useRouter();
   const { toast } = useToast();
-  const [requests, setRequests] = useState<Request[]>([]);
+  const [requests, setRequests] = useState<RequestDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "ALL">(
     "ALL"
@@ -50,9 +34,9 @@ export default function RequestList() {
 
   const fetchRequests = useCallback(async () => {
     try {
-      const url = new URL("/api/requests", window.location.origin);
+      let url = "/api/requests";
       if (statusFilter !== "ALL") {
-        url.searchParams.append("status", statusFilter);
+        url += `?status=${statusFilter}`;
       }
 
       const response = await fetch(url);
@@ -156,7 +140,7 @@ export default function RequestList() {
             >
               Shipment #
             </TableHead>
-            <TableHead>Part #</TableHead>
+            <TableHead>Part Numbers</TableHead>
             <TableHead
               className="cursor-pointer"
               onClick={() => handleSort("palletCount")}
@@ -184,12 +168,13 @@ export default function RequestList() {
             <TableRow key={request.id}>
               <TableCell>{request.shipmentNumber}</TableCell>
               <TableCell>
-                {request.partNumber.partNumber}
-                {request.partNumber.description && (
-                  <span className="block text-sm text-gray-500">
-                    {request.partNumber.description}
-                  </span>
-                )}
+                <div className="space-y-1">
+                  {request.partNumbers.map((pn, index) => (
+                    <div key={index} className="text-sm">
+                      {pn}
+                    </div>
+                  ))}
+                </div>
               </TableCell>
               <TableCell>{request.palletCount}</TableCell>
               <TableCell>

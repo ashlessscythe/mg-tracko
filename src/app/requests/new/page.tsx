@@ -1,5 +1,6 @@
 import { Metadata } from "next";
-import NewRequestForm from "@/components/requests/new-request-form";
+import { Header } from "@/components/header";
+import { ProtectedNewRequestForm } from "@/components/requests/protected-new-request-form";
 
 export const metadata: Metadata = {
   title: "New Request | Expi-Trako",
@@ -8,11 +9,14 @@ export const metadata: Metadata = {
 
 export default function NewRequestPage() {
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Create New Request</h1>
-        <NewRequestForm />
+    <>
+      <Header />
+      <div className="container mx-auto py-8 px-4">
+        <div className="max-w-2xl mx-auto">
+          <h1 className="text-3xl font-bold mb-8">New Must-Go Request</h1>
+          <ProtectedNewRequestForm />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

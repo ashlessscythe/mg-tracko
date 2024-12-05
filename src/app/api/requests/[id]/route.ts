@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { RequestStatus } from "@prisma/client";
+import { authOptions } from "@/lib/auth-config";
+import type { AuthUser, SessionUser, UpdateRequestData } from "@/lib/types";
+import { isWarehouse } from "@/lib/auth";
 
 // GET /api/requests/[id] - Get a single request by ID
 export async function GET(
@@ -9,21 +12,22 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const user = session.user as SessionUser;
+
     const mustGoRequest = await prisma.mustGoRequest.findUnique({
       where: {
         id: params.id,
-        ...(session.user.role !== "ADMIN" &&
-          session.user.role === "CUSTOMER_SERVICE" && {
-            createdBy: session.user.id,
+        ...(user.role !== "ADMIN" &&
+          user.role === "CUSTOMER_SERVICE" && {
+            createdBy: user.id,
           }),
       },
       include: {
-        partNumber: true,
         creator: {
           select: {
             id: true,
@@ -62,48 +66,96 @@ export async function GET(
   }
 }
 
-// PATCH /api/requests/[id] - Update request status
+// PATCH /api/requests/[id] - Update request status or add note
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
+
+    // Debug session
+    console.log("Session in PATCH:", {
+      sessionUser: session?.user,
+      fullSession: session,
+    });
+
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user is warehouse staff or admin
-    if (session.user.role !== "WAREHOUSE" && session.user.role !== "ADMIN") {
+    const user = session.user as SessionUser;
+
+    // Create AuthUser from session
+    const authUser: AuthUser = {
+      id: user.id,
+      role: user.role,
+    };
+
+    // Use the consistent isWarehouse helper
+    const hasPermission = isWarehouse(authUser);
+
+    // Debug permission check
+    console.log("Permission check:", {
+      userRole: user.role,
+      hasPermission,
+      authUser,
+    });
+
+    if (!hasPermission) {
       return NextResponse.json(
         { error: "Only warehouse staff can update request status" },
         { status: 403 }
       );
     }
 
-    const body = await req.json();
+    const body = (await req.json()) as UpdateRequestData;
     const { status, note } = body;
 
-    if (!status || !Object.values(RequestStatus).includes(status)) {
+    // Debug request body
+    console.log("Request body:", { status, note });
+
+    // Validate if updating status
+    if (status && !Object.values(RequestStatus).includes(status)) {
       return NextResponse.json(
         { error: "Invalid status provided" },
         { status: 400 }
       );
     }
 
+    // Get current request
+    const currentRequest = await prisma.mustGoRequest.findUnique({
+      where: { id: params.id },
+      select: { notes: true },
+    });
+
+    if (!currentRequest) {
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    }
+
+    // Update request
+    const updateData: any = {};
+    if (status) {
+      updateData.status = status;
+    }
+    if (note) {
+      updateData.notes = [...(currentRequest.notes || []), note];
+    }
+
     const updatedRequest = await prisma.mustGoRequest.update({
       where: { id: params.id },
       data: {
-        status,
+        ...updateData,
         logs: {
           create: {
-            action: `Status updated to ${status}${note ? `: ${note}` : ""}`,
-            performedBy: session.user.id,
+            action: status
+              ? `Status updated to ${status}${note ? `: ${note}` : ""}`
+              : `Note added: ${note}`,
+            performedBy: user.id,
           },
         },
       },
       include: {
-        partNumber: true,
         creator: {
           select: {
             name: true,
@@ -129,6 +181,9 @@ export async function PATCH(
 
     return NextResponse.json(updatedRequest);
   } catch (error) {
+    // Debug any errors
+    console.error("Error in PATCH:", error);
+
     if (
       error instanceof Error &&
       error.message.includes("Record to update not found")

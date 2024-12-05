@@ -16,34 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { RequestStatus } from "@prisma/client";
 import { useAuth } from "@/lib/auth-context";
-
-interface RequestDetail {
-  id: string;
-  shipmentNumber: string;
-  partNumber: {
-    partNumber: string;
-    description?: string | null;
-  };
-  palletCount: number;
-  status: RequestStatus;
-  routeInfo?: string | null;
-  additionalNotes?: string | null;
-  createdAt: string;
-  creator: {
-    name: string;
-    email: string;
-    role: string;
-  };
-  logs: {
-    id: string;
-    action: string;
-    timestamp: string;
-    performer: {
-      name: string;
-      role: string;
-    };
-  }[];
-}
+import { isWarehouse } from "@/lib/auth";
+import type { AuthUser, RequestDetail as RequestDetailType } from "@/lib/types";
 
 interface RequestDetailProps {
   id: string;
@@ -53,11 +27,11 @@ export default function RequestDetail({ id }: RequestDetailProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useAuth();
-  const [request, setRequest] = useState<RequestDetail | null>(null);
+  const [request, setRequest] = useState<RequestDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [newStatus, setNewStatus] = useState<RequestStatus | "">("");
-  const [statusNote, setStatusNote] = useState("");
+  const [note, setNote] = useState("");
 
   const fetchRequest = useCallback(async () => {
     try {
@@ -89,8 +63,9 @@ export default function RequestDetail({ id }: RequestDetailProps) {
     fetchRequest();
   }, [fetchRequest]);
 
-  const handleStatusUpdate = async () => {
-    if (!newStatus || newStatus === request?.status) return;
+  const handleUpdate = async () => {
+    if (!note && !newStatus) return;
+    if (newStatus === request?.status && !note) return;
 
     setUpdating(true);
     try {
@@ -100,27 +75,29 @@ export default function RequestDetail({ id }: RequestDetailProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          status: newStatus,
-          note: statusNote,
+          ...(newStatus !== request?.status && { status: newStatus }),
+          ...(note && { note }),
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error("Failed to update status");
+        throw new Error(data.error || "Failed to update request");
       }
 
-      const updatedRequest = await response.json();
-      setRequest(updatedRequest);
-      setStatusNote("");
+      setRequest(data);
+      setNote("");
       toast({
         title: "Success",
-        description: "Request status updated successfully",
+        description:
+          newStatus !== request?.status
+            ? "Request status updated successfully"
+            : "Note added successfully",
       });
     } catch (error: unknown) {
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to update request status";
+        error instanceof Error ? error.message : "Failed to update request";
       toast({
         title: "Error",
         description: errorMessage,
@@ -152,7 +129,19 @@ export default function RequestDetail({ id }: RequestDetailProps) {
     return <div>Request not found</div>;
   }
 
-  const canUpdateStatus = user?.role === "WAREHOUSE" || user?.role === "ADMIN";
+  // Create AuthUser from session user if available
+  const authUser: AuthUser | null = user
+    ? {
+        id: user.id,
+        role: user.role,
+      }
+    : null;
+
+  // Use the consistent role check helpers
+  const canUpdateStatus = authUser ? isWarehouse(authUser) : false;
+
+  // Initialize notes array if undefined
+  const notes = request.notes || [];
 
   return (
     <div className="space-y-6">
@@ -176,14 +165,13 @@ export default function RequestDetail({ id }: RequestDetailProps) {
               <div className="font-medium">{request.shipmentNumber}</div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Part Number</div>
-              <div className="font-medium">
-                {request.partNumber.partNumber}
-                {request.partNumber.description && (
-                  <span className="block text-sm text-muted-foreground">
-                    {request.partNumber.description}
-                  </span>
-                )}
+              <div className="text-sm text-muted-foreground">Part Numbers</div>
+              <div className="font-medium space-y-1">
+                {request.partNumbers.map((pn, index) => (
+                  <div key={index} className="bg-muted px-2 py-1 rounded">
+                    {pn}
+                  </div>
+                ))}
               </div>
             </div>
             <div>
@@ -237,40 +225,74 @@ export default function RequestDetail({ id }: RequestDetailProps) {
       {canUpdateStatus && (
         <Card>
           <CardHeader>
-            <CardTitle>Update Status</CardTitle>
+            <CardTitle>Update Request</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Select
-              value={newStatus}
-              onValueChange={(value: string) =>
-                setNewStatus(value as RequestStatus)
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select new status" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.values(RequestStatus).map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {status.replace("_", " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Textarea
-              placeholder="Add a note about this status update"
-              value={statusNote}
-              onChange={(e) => setStatusNote(e.target.value)}
-            />
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Status</div>
+              <Select
+                value={newStatus}
+                onValueChange={(value: string) =>
+                  setNewStatus(value as RequestStatus)
+                }
+              >
+                <SelectTrigger className="bg-background text-foreground border border-border shadow-sm rounted-md">
+                  <SelectValue placeholder="Select new status" />
+                </SelectTrigger>
+                <SelectContent className="bg-background text-foreground border border-border shadow-sm rounted-md">
+                  {Object.values(RequestStatus).map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status.replace("_", " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Add Note</div>
+              <Textarea
+                placeholder="Add a note (optional)"
+                value={note}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setNote(e.target.value)
+                }
+                rows={4}
+              />
+            </div>
+
             <Button
-              onClick={handleStatusUpdate}
-              disabled={updating || !newStatus || newStatus === request.status}
+              onClick={handleUpdate}
+              disabled={
+                updating ||
+                (!note && (!newStatus || newStatus === request.status))
+              }
+              className="w-full"
             >
-              {updating ? "Updating..." : "Update Status"}
+              {updating ? "Updating..." : "Update Request"}
             </Button>
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {notes.length > 0 ? (
+              notes.map((note, index) => (
+                <div key={index} className="bg-muted p-3 rounded">
+                  {note}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-muted-foreground">No notes yet</div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

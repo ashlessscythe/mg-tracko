@@ -7,23 +7,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { RequestStatus } from "@prisma/client";
-
-interface FormData {
-  shipmentNumber: string;
-  partNumberId: string;
-  palletCount: number;
-  routeInfo?: string | null;
-  additionalNotes?: string | null;
-  status?: RequestStatus;
-}
+import type { FormData } from "@/lib/types";
 
 export default function NewRequestForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [rawPartNumbers, setRawPartNumbers] = useState("");
   const [formData, setFormData] = useState<FormData>({
     shipmentNumber: "",
-    partNumberId: "",
+    partNumbers: [],
     palletCount: 1,
     routeInfo: "",
     additionalNotes: "",
@@ -35,12 +28,27 @@ export default function NewRequestForm() {
     setIsLoading(true);
 
     try {
+      // Parse part numbers from the raw text
+      const partNumbers = rawPartNumbers
+        .split(/[\n,]/) // Split by newline or comma
+        .map((pn) => pn.trim()) // Trim whitespace
+        .filter((pn) => pn.length > 0); // Remove empty strings
+
+      if (partNumbers.length === 0) {
+        throw new Error("At least one part number is required");
+      }
+
+      const requestData = {
+        ...formData,
+        partNumbers,
+      };
+
       const response = await fetch("/api/requests", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(requestData),
       });
 
       const data = await response.json();
@@ -71,10 +79,14 @@ export default function NewRequestForm() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === "palletCount" ? parseInt(value) || 1 : value,
-    }));
+    if (name === "partNumbers") {
+      setRawPartNumbers(value);
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: name === "palletCount" ? parseInt(value) || 1 : value,
+      }));
+    }
   };
 
   return (
@@ -92,15 +104,19 @@ export default function NewRequestForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="partNumberId">Part Number *</Label>
-        <Input
-          id="partNumberId"
-          name="partNumberId"
-          value={formData.partNumberId}
+        <Label htmlFor="partNumbers">Part Numbers *</Label>
+        <Textarea
+          id="partNumbers"
+          name="partNumbers"
+          value={rawPartNumbers}
           onChange={handleChange}
           required
-          placeholder="Enter part number"
+          placeholder="Paste part numbers here (one per line or comma-separated)"
+          rows={5}
         />
+        <p className="text-sm text-muted-foreground">
+          Paste part numbers from Excel, one per line or comma-separated
+        </p>
       </div>
 
       <div className="space-y-2">

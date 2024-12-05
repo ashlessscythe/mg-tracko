@@ -22,29 +22,19 @@ model User {
 model MustGoRequest {
   id              String        @id @default(cuid())
   shipmentNumber  String
-  partNumberId    String        
-  partNumber      PartNumber    @relation(fields: [partNumberId], references: [id])
+  partNumbers     String[]     
   palletCount     Int
   status          RequestStatus @default(PENDING)
   routeInfo       String?
   additionalNotes String?
+  notes           String[]      @default([])  // Array of notes
   createdBy       String        
   creator         User          @relation("CreatedBy", fields: [createdBy], references: [id])
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   logs            RequestLog[]  @relation("RequestLogs")
 
-  @@index([partNumberId])
   @@index([createdBy])
-}
-
-model PartNumber {
-  id            String          @id @default(cuid())
-  partNumber    String          @unique
-  description   String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  mustGoRequests MustGoRequest[]
 }
 
 model RequestLog {
