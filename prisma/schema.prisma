@@ -8,49 +8,63 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  password     String
-  role         Role      
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              String          @id @default(cuid())
+  name            String
+  email           String          @unique
+  password        String
+  role            Role
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  mustGoRequests  MustGoRequest[] @relation("CreatedBy")
+  requestLogs     RequestLog[]    @relation("PerformedBy")
 }
 
 model MustGoRequest {
-  id              String     @id @default(cuid())
+  id              String        @id @default(cuid())
   shipmentNumber  String
-  partNumber      String
+  partNumberId    String        
+  partNumber      PartNumber    @relation(fields: [partNumberId], references: [id])
   palletCount     Int
   status          RequestStatus @default(PENDING)
   routeInfo       String?
   additionalNotes String?
-  createdBy       String
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdBy       String        
+  creator         User          @relation("CreatedBy", fields: [createdBy], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  logs            RequestLog[]  @relation("RequestLogs")
+
+  @@index([partNumberId])
+  @@index([createdBy])
+}
+
+model PartNumber {
+  id            String          @id @default(cuid())
+  partNumber    String          @unique
+  description   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  mustGoRequests MustGoRequest[]
 }
 
 model RequestLog {
-  id              String     @id @default(cuid())
+  id              String        @id @default(cuid())
   mustGoRequestId String
-  action          String     
+  mustGoRequest   MustGoRequest @relation("RequestLogs", fields: [mustGoRequestId], references: [id])
+  action          String        
   performedBy     String
-  timestamp       DateTime   @default(now())
-}
+  performer       User          @relation("PerformedBy", fields: [performedBy], references: [id])
+  timestamp       DateTime      @default(now())
 
-model PartInfo {
-  id         String   @id @default(cuid())
-  partNumber String   @unique
-  description String?
-  weight     Float?
-  dimensions String?  
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  @@index([mustGoRequestId])
+  @@index([performedBy])
 }
 
 enum Role {
   ADMIN
   CUSTOMER_SERVICE
   WAREHOUSE
+  REPORT_RUNNER
 }
 
 enum RequestStatus {

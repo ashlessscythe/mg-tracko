@@ -1,99 +1,106 @@
-### `todo.txt`
+DEVELOPMENT AND TESTING MILESTONES
 
----
+1. CORE SETUP (Priority: HIGHEST)
+- [X] Set up PostgreSQL on Neon.tech + configure env
+- [X] Run migrations
+- [X] Test database connection
 
-#### **Milestone 1: Project Setup**  
-- [x] Initialize Next.js project.  
-- [x] Set up Prisma with PostgreSQL on Neon.tech.  
-- [ ] Configure Tailwind CSS with theme-aware classes.  
-- [x] Install ShadCN@latest and integrate UI components.  
+2. AUTH IMPLEMENTATION (Priority: HIGH)
+Backend:
+- [ ] Test /api/auth/register and /api/auth/login
+- [ ] Verify role-based middleware
 
----
+Frontend:
+- [ ] Create /login page
+  * Email/password form
+  * Error handling
+  * Redirect to dashboard
+- [ ] Create /register page
 
-#### **Milestone 2: Database Schema and API Development**  
-- [x] Define and migrate database schema using Prisma.  
-- [ ] Implement APIs for:
-  - [ ] User Authentication and Role Management.  
-  - [ ] MustGo Request CRUD operations.  
-  - [ ] Part Information CRUD operations.  
-  - [ ] Activity logs for request actions.  
-- [ ] Test database interactions and APIs with Postman.  
+3. DASHBOARD & REQUESTS (Priority: HIGH)
+Backend:
+- [ ] Test /api/requests endpoints
+- [ ] Test /api/parts endpoints
 
----
+Frontend:
+- [ ] Create dashboard (/)
+  * Request status overview
+  * Quick search
+  * Metrics display
+- [ ] Create new request form (/requests/new)
+  * All required fields
+  * Part number lookup
+  * Validation
+- [ ] Create request queue (/requests)
+  * Sortable columns
+  * Status filters
+  * Warehouse actions
+- [ ] Create request detail (/requests/[id])
+  * Full request info
+  * Status updates
+  * Action history
 
-#### **Milestone 3: Authentication and Authorization**  
-- [ ] Implement local authentication (email/password).  
-- [ ] Add password hashing and salting.  
-- [ ] Set up role-based access control (RBAC).  
-- [ ] Test authentication flows and role-based restrictions.  
+4. ADMIN FEATURES
+Backend:
+- [ ] Test user management endpoints
+- [ ] Test role updates
 
----
+Frontend:
+- [ ] Create admin panel (/admin)
+  * User management
+  * System settings
+  * Activity logs
 
-#### **Milestone 4: Frontend Development**  
-- [ ] Build responsive layouts with Tailwind.  
-- [ ] Develop key pages:  
-  - [ ] Login/Signup.  
-  - [ ] Dashboard.  
-  - [ ] Request Submission Form.  
-  - [ ] Request Queue (Warehouse View).  
-  - [ ] Request Detail View.  
-  - [ ] Admin Panel.  
-- [ ] Integrate APIs with frontend.  
-- [ ] Ensure theme-aware dark and light mode support.  
-- [ ] Add responsive design testing for mobile, tablet, and desktop.  
+5. TESTING & DEPLOYMENT
+- [ ] Test all user flows:
+  * CS creates request
+  * Warehouse processes
+  * Admin manages
+- [ ] Deploy to Vercel
+- [ ] Verify production
 
----
+PAGE REQUIREMENTS:
 
-#### **Milestone 5: Testing and Bug Fixing**  
-- [ ] Conduct unit tests for API endpoints.  
-- [ ] Perform integration testing for frontend and backend.  
-- [ ] Test responsive UI on multiple devices and browsers.  
-- [ ] Validate search, filter, and sort functionality.  
-- [ ] Test real-time updates for request queue.  
+/login
+- Email/password form
+- Dark/light mode
+- Error handling
 
----
+/dashboard (/)
+- Status overview cards
+- Search bar
+- Key metrics
+- Recent activity
 
-#### **Milestone 6: Deployment**  
-- [ ] Deploy PostgreSQL database on Neon.tech.  
-- [ ] Deploy Next.js app on Vercel.  
-- [ ] Configure environment variables securely.  
-- [ ] Conduct end-to-end testing on deployed app.  
+/requests/new
+- Shipment number input
+- Part number selection
+- Pallet count input
+- Route info
+- Additional notes
+- Submit/cancel
 
----
+/requests
+- Request queue table
+- Status filters
+- Sort options
+- Action buttons
+- Search/filter
 
-#### **Tollgate 1: Initial Deployment Checkpoint**  
-- [ ] Verify schema migrations on Neon.tech.  
-- [ ] Confirm API functionality in production.  
-- [ ] Ensure basic UI components are operational.  
+/requests/[id]
+- Request details
+- Status updates
+- History log
+- Actions based on role
 
----
+/admin
+- User management
+- Role assignments
+- System settings
+- Activity monitoring
 
-#### **Milestone 7: Post-Deployment Enhancements**  
-- [ ] Add user activity logs to Admin Panel.  
-- [ ] Implement advanced search and filtering options.  
-- [ ] Optimize database queries for performance.  
-- [ ] Add custom error pages (404, 500).  
-
----
-
-#### **Tollgate 2: Pre-Launch Review**  
-- [ ] Perform stakeholder walkthrough for all features.  
-- [ ] Gather feedback and address critical issues.  
-- [ ] Finalize UI/UX polish.  
-- [ ] Prepare documentation for users and admins.  
-
----
-
-#### **Milestone 8: Go Live**  
-- [ ] Conduct final system test with real data.  
-- [ ] Launch application for production use.  
-- [ ] Monitor performance and address post-launch bugs.  
-
----
-
-#### **Future Enhancements (Backlog)**  
-- [ ] Integrate notification system for updates (email or push).  
-- [ ] Add analytics dashboard for tracking performance metrics.  
-- [ ] Explore AI-assisted predictions for shipment priorities.  
-
----
+DESIGN REQUIREMENTS:
+- Use ShadcnUI components
+- Implement dark/light mode
+- Responsive design
+- Professional UI
