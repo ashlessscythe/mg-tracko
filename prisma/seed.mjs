@@ -42,6 +42,46 @@ const rolePasswords = {
   PENDING: "pendingpass",
 };
 
+// Helper function to generate realistic part number with quantity
+function generatePartWithQuantity() {
+  // Generate 5-6 digit part number
+  const partNumber = faker.number.int({ min: 10000, max: 999999 }).toString();
+
+  // Generate quantity that's a multiple of 24 (between 24 and 240)
+  const quantity = faker.number.int({ min: 1, max: 10 }) * 24;
+
+  return { number: partNumber, quantity };
+}
+
+// Helper function to generate realistic notes
+function generateNote() {
+  const noteTypes = [
+    () =>
+      `${faker.word.adjective()} delivery needed by ${faker.date
+        .future()
+        .toLocaleDateString()}`,
+    () =>
+      `Customer ${faker.person.lastName()} waiting at dock ${faker.number.int({
+        min: 1,
+        max: 50,
+      })}`,
+    () =>
+      `Temperature sensitive - maintain at ${faker.number.int({
+        min: 35,
+        max: 75,
+      })}°F`,
+    () =>
+      `Lift gate required for ${faker.number.int({ min: 1, max: 5 })} pallets`,
+    () =>
+      `Contact ${faker.person.fullName()} at ${faker.phone.number()} before delivery`,
+    () => `Special handling required - ${faker.commerce.productMaterial()}`,
+    () => `Priority level ${faker.number.int({ min: 1, max: 5 })} shipment`,
+    () => `Dock ${faker.number.int({ min: 1, max: 50 })} assignment only`,
+  ];
+
+  return faker.helpers.arrayElement(noteTypes)();
+}
+
 async function hashPassword(password) {
   return bcrypt.hash(password, 10);
 }
@@ -102,28 +142,35 @@ async function main() {
   // Create must-go requests
   const requests = [];
   for (let i = 0; i < argv.count; i++) {
-    // Generate 1-3 part numbers for each request
+    // Generate 1-3 part numbers with quantities
     const partNumberCount = faker.number.int({ min: 1, max: 3 });
-    const partNumbers = Array.from({ length: partNumberCount }, () =>
-      argv.useFaker
-        ? faker.string.alphanumeric({ length: 8, casing: "upper" })
-        : `PART-${faker.number.int(999)}`
+    const selectedParts = Array.from(
+      { length: partNumberCount },
+      generatePartWithQuantity
+    );
+
+    // Calculate total pallet count based on quantities
+    const totalPalletCount = selectedParts.reduce((acc, part) => {
+      return acc + Math.ceil(part.quantity / 24); // 24 pieces per pallet
+    }, 0);
+
+    // Generate 1-3 random notes
+    const noteCount = faker.number.int({ min: 1, max: 3 });
+    const selectedNotes = Array.from({ length: noteCount }, generateNote).join(
+      " | "
     );
 
     const request = await prisma.mustGoRequest.create({
       data: {
-        shipmentNumber: argv.useFaker
-          ? faker.string.alphanumeric({ length: 10, casing: "upper" })
-          : `SHIP-${faker.number.int(999)}`,
-        partNumbers,
-        palletCount: faker.number.int({ min: 1, max: 10 }),
+        shipmentNumber: faker.string.alphanumeric({
+          length: 10,
+          casing: "upper",
+        }),
+        partNumbers: selectedParts.map((p) => p.number),
+        palletCount: totalPalletCount,
         status: statuses[Math.floor(Math.random() * statuses.length)],
-        routeInfo: argv.useFaker
-          ? faker.location.streetAddress()
-          : `Route ${faker.number.int(999)}`,
-        additionalNotes: argv.useFaker
-          ? faker.lorem.sentence()
-          : `Note ${faker.number.int(999)}`,
+        routeInfo: faker.location.streetAddress(),
+        additionalNotes: selectedNotes,
         createdBy:
           createdUsers[Math.floor(Math.random() * createdUsers.length)].id,
       },
@@ -140,9 +187,7 @@ async function main() {
       const log = await prisma.requestLog.create({
         data: {
           mustGoRequestId: request.id,
-          action: argv.useFaker
-            ? faker.word.verb()
-            : `Action ${faker.number.int(999)}`,
+          action: faker.word.verb(),
           performedBy:
             createdUsers[Math.floor(Math.random() * createdUsers.length)].id,
         },
