@@ -1,5 +1,6 @@
-import { headers } from "next/headers";
+import { getServerSession } from "next-auth";
 import { Role } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 export interface AuthUser {
   id: string;
@@ -7,18 +8,15 @@ export interface AuthUser {
 }
 
 export async function getAuthUser(): Promise<AuthUser> {
-  const headersList = await headers();
+  const session = await getServerSession();
 
-  const userId = headersList.get("x-user-id");
-  const userRole = headersList.get("x-user-role") as Role;
-
-  if (!userId || !userRole) {
-    throw new Error("User not authenticated");
+  if (!session?.user) {
+    redirect("/");
   }
 
   return {
-    id: userId,
-    role: userRole,
+    id: session.user.id,
+    role: session.user.role as Role,
   };
 }
 
@@ -34,7 +32,6 @@ export function isCustomerService(user: AuthUser): boolean {
   return user.role === "CUSTOMER_SERVICE" || user.role === "ADMIN";
 }
 
-// Helper to check if user has permission to access a resource
 export function hasPermission(user: AuthUser, allowedRoles: Role[]): boolean {
   return allowedRoles.includes(user.role) || user.role === "ADMIN";
 }

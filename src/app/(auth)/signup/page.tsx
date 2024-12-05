@@ -33,7 +33,8 @@ export default function SignUp() {
         throw new Error(data.error || "Failed to sign up");
       }
 
-      router.push("/signin");
+      // Redirect to signin page after successful registration
+      router.push("/signin?registered=true");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

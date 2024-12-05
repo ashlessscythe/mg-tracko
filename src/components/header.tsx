@@ -18,7 +18,6 @@ export function Header() {
     ? [
         { href: "/dashboard", label: "Dashboard" },
         { href: "/requests", label: "Requests" },
-        { href: "/parts", label: "Parts" },
         ...(user.role === "ADMIN" ? [{ href: "/users", label: "Users" }] : []),
       ]
     : [];
