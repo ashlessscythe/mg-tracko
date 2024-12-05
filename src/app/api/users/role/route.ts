@@ -73,7 +73,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 // Get all users with their roles (admin only)
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const authUser = await getAuthUser();
 

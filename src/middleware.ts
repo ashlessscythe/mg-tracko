@@ -94,7 +94,7 @@ export async function middleware(request: NextRequest) {
     }
 
     return NextResponse.next();
-  } catch (error) {
+  } catch {
     // If token is invalid
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });

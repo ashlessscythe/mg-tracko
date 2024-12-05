@@ -2,8 +2,6 @@ import { NextRequest } from "next/server";
 import { Role, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
-
 export async function POST(req: NextRequest) {
   let client;
   try {
@@ -12,7 +10,7 @@ export async function POST(req: NextRequest) {
     let body;
     try {
       body = await req.json();
-    } catch (e) {
+    } catch {
       return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
     }
 
