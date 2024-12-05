@@ -1,9 +1,11 @@
+"use client";
+
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Clock, BarChart2, Users, Truck } from "lucide-react";
-
-const APP_NAME = "MG Tracko";
+import { useAuth } from "@/lib/auth-context";
+import { APP_NAME } from "@/lib/config";
 
 const features = [
   {
@@ -32,6 +34,8 @@ const features = [
 ];
 
 export default function Home() {
+  const { user, loading } = useAuth();
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
@@ -51,22 +55,35 @@ export default function Home() {
                 Streamline your expedite request process with {APP_NAME}. Track,
                 manage, and process must-go shipments efficiently in one place.
               </p>
-              <div className="mx-auto mt-10 max-w-sm sm:flex sm:max-w-none sm:justify-center">
-                <div className="space-y-4 sm:mx-auto sm:inline-grid sm:grid-cols-2 sm:gap-5 sm:space-y-0">
-                  <Link
-                    href="/signin"
-                    className="flex items-center justify-center rounded-md border border-transparent bg-primary px-4 py-3 text-base font-medium text-primary-foreground shadow-sm hover:bg-primary/90 sm:px-8"
-                  >
-                    Sign in
-                  </Link>
-                  <Link
-                    href="/signup"
-                    className="flex items-center justify-center rounded-md border border-input bg-background px-4 py-3 text-base font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground sm:px-8"
-                  >
-                    Register
-                  </Link>
+              {!loading && (
+                <div className="mx-auto mt-10 max-w-sm sm:flex sm:max-w-none sm:justify-center">
+                  {user ? (
+                    <div className="space-y-4 sm:mx-auto sm:inline-grid sm:grid-cols-1 sm:gap-5 sm:space-y-0">
+                      <Link
+                        href="/dashboard"
+                        className="flex items-center justify-center rounded-md border border-transparent bg-primary px-8 py-3 text-base font-medium text-primary-foreground shadow-sm hover:bg-primary/500 hover:shadow-lg hover:scale-105 transition-transform duration-200"
+                      >
+                        Go to Dashboard
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 sm:mx-auto sm:inline-grid sm:grid-cols-2 sm:gap-5 sm:space-y-0">
+                      <Link
+                        href="/signin"
+                        className="flex items-center justify-center rounded-md border border-transparent bg-primary px-4 py-3 text-base font-medium text-primary-foreground shadow-sm hover:bg-primary/90 sm:px-8"
+                      >
+                        Sign in
+                      </Link>
+                      <Link
+                        href="/signup"
+                        className="flex items-center justify-center rounded-md border border-input bg-background px-4 py-3 text-base font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground sm:px-8"
+                      >
+                        Register
+                      </Link>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

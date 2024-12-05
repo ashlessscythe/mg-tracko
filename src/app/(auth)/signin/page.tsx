@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
+import Link from "next/link";
 
 export default function SignIn() {
   const router = useRouter();
@@ -97,6 +98,12 @@ export default function SignIn() {
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
+          <div className="text-center text-sm">
+            Don't have an account?{" "}
+            <Link href="/signup" className="text-primary hover:underline">
+              Sign up here
+            </Link>
+          </div>
         </div>
       </main>
     </div>

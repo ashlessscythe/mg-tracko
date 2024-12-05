@@ -1,43 +1,50 @@
-import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { NextRequest } from "next/server";
+import { Role, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
+  let client;
   try {
-    const { email, password, name, role = "USER" } = await req.json();
+    client = new PrismaClient();
+
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
+
+    const { email, password, name } = body;
 
     // Validate input
     if (!email || !password || !name) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await client.user.findUnique({
       where: { email },
     });
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: "User already exists" },
-        { status: 400 }
-      );
+      return Response.json({ error: "User already exists" }, { status: 400 });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    const user = await prisma.user.create({
+    // Create user with PENDING role
+    const user = await client.user.create({
       data: {
         email,
         password: hashedPassword,
         name,
-        role,
+        role: Role.PENDING,
       },
       select: {
         id: true,
@@ -48,12 +55,29 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(user, { status: 201 });
-  } catch (error) {
-    console.error("Registration error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+    return Response.json(
+      {
+        success: true,
+        message: "User created successfully",
+        userId: user.id,
+      },
+      {
+        status: 201,
+      }
     );
+  } catch (error) {
+    return Response.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      {
+        status: 500,
+      }
+    );
+  } finally {
+    if (client) {
+      await client.$disconnect();
+    }
   }
 }

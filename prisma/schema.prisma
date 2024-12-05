@@ -65,6 +65,7 @@ enum Role {
   CUSTOMER_SERVICE
   WAREHOUSE
   REPORT_RUNNER
+  PENDING
 }
 
 enum RequestStatus {

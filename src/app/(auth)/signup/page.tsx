@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
+import Link from "next/link";
 
 export default function SignUp() {
   const router = useRouter();
@@ -115,6 +116,12 @@ export default function SignUp() {
               {loading ? "Creating account..." : "Create Account"}
             </button>
           </form>
+          <div className="text-center text-sm">
+            Already have an account?{" "}
+            <Link href="/signin" className="text-primary hover:underline">
+              Sign in here
+            </Link>
+          </div>
         </div>
       </main>
     </div>
