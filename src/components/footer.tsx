@@ -1,3 +1,5 @@
+import { APP_NAME } from "@/lib/config";
+
 export function Footer() {
   return (
     <footer className="border-t bg-background">
@@ -7,7 +9,7 @@ export function Footer() {
             Built with care for efficient expedite request management.
           </p>
           <p className="text-sm leading-7 text-muted-foreground">
-            © 2024 MG Tracko. All rights reserved.
+            © 2024 {APP_NAME}. All rights reserved.
           </p>
         </div>
       </div>
