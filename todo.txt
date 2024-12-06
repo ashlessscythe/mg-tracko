@@ -45,7 +45,7 @@ Backend:
 - [ ] Test role updates
 
 Frontend:
-- [ ] Create admin panel (/admin)
+- [x] Create admin panel (/admin)
   * User management
   * System settings
   * Activity logs

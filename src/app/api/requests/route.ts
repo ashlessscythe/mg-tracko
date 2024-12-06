@@ -11,12 +11,6 @@ export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    // Debug session
-    console.log("Session in GET:", {
-      sessionUser: session?.user,
-      fullSession: session,
-    });
-
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -26,9 +20,6 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
-
-    // Debug search params
-    console.log("Search params:", { status, search });
 
     const where: Prisma.MustGoRequestWhereInput = {
       ...(status && { status: status as RequestStatus }),
@@ -52,9 +43,6 @@ export async function GET(req: Request) {
           createdBy: user.id,
         }),
     };
-
-    // Debug where clause
-    console.log("Where clause:", where);
 
     const requests = await prisma.mustGoRequest.findMany({
       where,
@@ -86,9 +74,6 @@ export async function GET(req: Request) {
       },
     });
 
-    // Debug results
-    console.log("Found requests:", requests.length);
-
     return NextResponse.json(requests);
   } catch (error) {
     console.error("Error fetching requests:", error);
@@ -104,12 +89,6 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    // Debug session
-    console.log("Session in POST:", {
-      sessionUser: session?.user,
-      fullSession: session,
-    });
-
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -121,14 +100,6 @@ export async function POST(req: Request) {
       role: user.role,
     };
 
-    // Debug permission check
-    console.log("Permission check:", {
-      userRole: user.role,
-      isCs: isCustomerService(authUser),
-      isAdm: isAdmin(authUser),
-      authUser,
-    });
-
     if (!isCustomerService(authUser) && !isAdmin(authUser)) {
       return NextResponse.json(
         { error: "Only customer service can create requests" },
@@ -139,14 +110,12 @@ export async function POST(req: Request) {
     const body = (await req.json()) as FormData;
     const {
       shipmentNumber,
+      plant,
       partNumbers,
       palletCount,
       routeInfo,
       additionalNotes,
     } = body;
-
-    // Debug request body
-    console.log("Request body:", body);
 
     // Validate required fields
     if (!shipmentNumber || !partNumbers?.length || !palletCount) {
@@ -156,22 +125,42 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create the request
-    const request = await prisma.mustGoRequest.create({
-      data: {
-        shipmentNumber,
-        partNumbers,
-        palletCount,
-        routeInfo,
-        additionalNotes,
-        createdBy: user.id,
-        logs: {
-          create: {
-            action: `Request created with ${partNumbers.length} part number(s)`,
-            performedBy: user.id,
+    // Validate plant format if provided
+    if (plant && !/^[a-zA-Z0-9]{4}$/.test(plant)) {
+      return NextResponse.json(
+        { error: "Plant must be exactly 4 alphanumeric characters" },
+        { status: 400 }
+      );
+    }
+
+    // Create request data object
+    const requestData: Prisma.MustGoRequestCreateInput = {
+      shipmentNumber,
+      plant,
+      partNumbers,
+      palletCount,
+      routeInfo,
+      additionalNotes,
+      creator: {
+        connect: {
+          id: user.id,
+        },
+      },
+      logs: {
+        create: {
+          action: `Request created with ${partNumbers.length} part number(s)`,
+          performer: {
+            connect: {
+              id: user.id,
+            },
           },
         },
       },
+    };
+
+    // Create the request
+    const request = await prisma.mustGoRequest.create({
+      data: requestData,
       include: {
         creator: {
           select: {
@@ -195,9 +184,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(request, { status: 201 });
   } catch (error) {
-    // Debug any errors
     console.error("Error in POST:", error);
-
     return NextResponse.json(
       { error: "Failed to create request" },
       { status: 500 }

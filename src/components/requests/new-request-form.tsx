@@ -16,6 +16,7 @@ export default function NewRequestForm() {
   const [rawPartNumbers, setRawPartNumbers] = useState("");
   const [formData, setFormData] = useState<FormData>({
     shipmentNumber: "",
+    plant: "",
     partNumbers: [],
     palletCount: 1,
     routeInfo: "",
@@ -36,6 +37,11 @@ export default function NewRequestForm() {
 
       if (partNumbers.length === 0) {
         throw new Error("At least one part number is required");
+      }
+
+      // Validate plant number if provided
+      if (formData.plant && !/^[a-zA-Z0-9]{4}$/.test(formData.plant)) {
+        throw new Error("Plant must be exactly 4 alphanumeric characters");
       }
 
       const requestData = {
@@ -100,6 +106,20 @@ export default function NewRequestForm() {
           onChange={handleChange}
           required
           placeholder="Enter shipment number"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="plant">Plant (4 characters)</Label>
+        <Input
+          id="plant"
+          name="plant"
+          value={formData.plant || ""}
+          onChange={handleChange}
+          placeholder="Enter 4-character plant code"
+          pattern="[a-zA-Z0-9]{4}"
+          title="Plant code must be exactly 4 alphanumeric characters"
+          maxLength={4}
         />
       </div>
 

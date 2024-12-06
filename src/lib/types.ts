@@ -15,6 +15,7 @@ export interface AuthUser {
 export interface RequestDetail {
   id: string;
   shipmentNumber: string;
+  plant?: string | null;
   partNumbers: string[];
   palletCount: number;
   status: RequestStatus;
@@ -42,6 +43,7 @@ export interface RequestLog {
 
 export interface FormData {
   shipmentNumber: string;
+  plant?: string | null;
   partNumbers: string[];
   palletCount: number;
   routeInfo?: string | null;

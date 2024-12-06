@@ -18,7 +18,7 @@ import type { RequestDetail } from "@/lib/types";
 
 type SortableField = keyof Pick<
   RequestDetail,
-  "shipmentNumber" | "palletCount" | "status" | "createdAt"
+  "shipmentNumber" | "plant" | "palletCount" | "status" | "createdAt"
 >;
 
 export default function RequestList() {
@@ -78,6 +78,9 @@ export default function RequestList() {
     switch (sortField) {
       case "shipmentNumber":
         compareResult = a.shipmentNumber.localeCompare(b.shipmentNumber);
+        break;
+      case "plant":
+        compareResult = (a.plant || "").localeCompare(b.plant || "");
         break;
       case "palletCount":
         compareResult = a.palletCount - b.palletCount;
@@ -140,6 +143,12 @@ export default function RequestList() {
             >
               Shipment #
             </TableHead>
+            <TableHead
+              className="cursor-pointer"
+              onClick={() => handleSort("plant")}
+            >
+              Plant
+            </TableHead>
             <TableHead>Part Numbers</TableHead>
             <TableHead
               className="cursor-pointer"
@@ -167,6 +176,7 @@ export default function RequestList() {
           {sortedRequests.map((request) => (
             <TableRow key={request.id}>
               <TableCell>{request.shipmentNumber}</TableCell>
+              <TableCell>{request.plant || "-"}</TableCell>
               <TableCell>
                 <div className="space-y-1">
                   {request.partNumbers.map((pn, index) => (
