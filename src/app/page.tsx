@@ -47,7 +47,7 @@ export default function Home() {
             <div className="text-center">
               <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl md:text-6xl">
                 Must-Go Management{" "}
-                <span className="bg-gradient-to-r from-indigo-500 to-cyan-400 dark:from-indigo-400 dark:to-cyan-300 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-red-500 to-indigo-400 dark:from-red-400 dark:to-indigo-300 bg-clip-text text-transparent">
                   Simplified
                 </span>
               </h1>

@@ -18,26 +18,62 @@ Frontend:
 - [X] Create /register page
 
 3. DASHBOARD & REQUESTS (Priority: HIGH)
-Backend:
-- [ ] Create and Test /api/requests endpoints
 
-Frontend:
-- [X] Create dashboard (/)
-  * Request status overview
-  * Quick search
-  * Metrics display
-- [X] Create new request form (/requests/new)
-  * All required fields
-  * Part number lookup
-  * Validation
-- [X] Create request queue (/requests)
-  * Sortable columns
-  * Status filters
-  * Warehouse actions
-- [X] Create request detail (/requests/[id])
-  * Full request info
-  * Status updates
-  * Action history
+#### Backend:
+- [ ] Create and Test `/api/requests` endpoints:
+  - [ ] POST `/requests` - Allow CS to submit new requests.
+  - [ ] GET `/requests` - Retrieve all requests (warehouse/admin view).
+  - [ ] GET `/requests?user={id}` - Retrieve requests for a specific user (CS view).
+  - [ ] PATCH `/requests/{id}` - Allow status updates, field edits, and notes (Warehouse/Admin).
+  - [ ] DELETE `/requests/{id}` - Allow admins to delete requests with logged reason.
+
+#### Frontend:
+- [X] Create dashboard (`/`)
+  - [X] Request status overview.
+  - [X] Quick search.
+  - [X] Metrics display.
+
+- [X] Create new request form (`/requests/new`)
+  - [X] All required fields.
+  - [X] Validation.
+
+- [ ] Allow Customer Service to:
+  - [ ] View their own requests (`/requests` with filter).
+  - [ ] Edit their own requests via request-detail view (`/requests/[id]`).
+  - [ ] Track history of edits and status changes (logged notes per action).
+
+- [ ] Allow Warehouse Staff to:
+  - [ ] View all requests (`/requests` with sortable columns and filters by status).
+  - [ ] Modify request statuses (e.g., Pending, In Progress, Complete).
+  - [ ] Add notes to requests.
+  - [ ] View full action history for each request (`/requests/[id]`).
+
+- [ ] Allow Admins to:
+  - [ ] View all requests.
+  - [ ] Edit any request details.
+  - [ ] Delete requests with logged reason and timestamp.
+
+- [X] Create request queue (`/requests`)
+  - [X] Sortable columns.
+  - [X] Status filters.
+  - [X] Warehouse actions.
+
+- [X] Create request detail view (`/requests/[id]`)
+  - [X] Display full request info.
+  - [X] Enable status updates.
+  - [X] Show action history.
+
+#### Optional Features:
+- [ ] Add audit logs for all actions (viewable by admins):
+  - [ ] Log status updates, edits, note additions, and deletions.
+  - [ ] Include timestamps, user names, and change details.
+
+- [ ] Add escalation process:
+  - [ ] Allow CS to flag urgent requests for admin/warehouse review.
+
+- [ ] Add notifications:
+  - [ ] Notify CS of status updates.
+  - [ ] Notify Warehouse of new requests.
 
 4. ADMIN FEATURES
 Backend:
