@@ -164,10 +164,16 @@ export default function RequestDetail({ id }: RequestDetailProps) {
               </div>
               <div className="font-medium">{request.shipmentNumber}</div>
             </div>
+            {request.plant && (
+              <div>
+                <div className="text-sm text-muted-foreground">Plant</div>
+                <div className="font-medium">{request.plant}</div>
+              </div>
+            )}
             <div>
               <div className="text-sm text-muted-foreground">Part Numbers</div>
               <div className="font-medium space-y-1">
-                {request.partNumbers.map((pn, index) => (
+                {request.partNumbers.map((pn: string, index: number) => (
                   <div key={index} className="bg-muted px-2 py-1 rounded">
                     {pn}
                   </div>
@@ -282,7 +288,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
         <CardContent>
           <div className="space-y-4">
             {notes.length > 0 ? (
-              notes.map((note, index) => (
+              notes.map((note: string, index: number) => (
                 <div key={index} className="bg-muted p-3 rounded">
                   {note}
                 </div>
@@ -300,7 +306,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {request.logs.map((log) => (
+            {request.logs.map((log: any) => (
               <div
                 key={log.id}
                 className="flex items-start justify-between border-b pb-4 last:border-0"

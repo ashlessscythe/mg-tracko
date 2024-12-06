@@ -22,6 +22,7 @@ model User {
 model MustGoRequest {
   id              String        @id @default(cuid())
   shipmentNumber  String
+  plant           String?       // Made plant field optional
   partNumbers     String[]     
   palletCount     Int
   status          RequestStatus @default(PENDING)
