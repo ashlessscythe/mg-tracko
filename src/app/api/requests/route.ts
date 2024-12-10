@@ -20,6 +20,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
+    const includeDeleted = searchParams.get("includeDeleted") === "true";
 
     const where: Prisma.MustGoRequestWhereInput = {
       ...(status && { status: status as RequestStatus }),
@@ -47,6 +48,7 @@ export async function GET(req: Request) {
         user.role === "CUSTOMER_SERVICE" && {
           createdBy: user.id,
         }),
+      ...(!includeDeleted && { deleted: false }),
     };
 
     const requests = await prisma.mustGoRequest.findMany({
