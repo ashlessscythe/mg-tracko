@@ -9,15 +9,29 @@ import type {
   UpdateRequestData,
   PartDetail,
 } from "@/lib/types";
-import { isWarehouse } from "@/lib/auth";
+import { isWarehouse, isAdmin, isCustomerService } from "@/lib/auth";
 
-// Define the part type to fix TypeScript error
 interface Part {
   partNumber: string;
   quantity: number;
 }
 
-// GET /api/requests/[id] - Get a single request by ID
+interface TrailerWithParts {
+  trailerNumber: string;
+  parts: Part[];
+}
+
+type DbPartDetail = Omit<PartDetail, "createdAt" | "updatedAt"> & {
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+interface PartChange {
+  key: string;
+  part: Part;
+  trailerNumber: string;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -87,7 +101,6 @@ export async function GET(
   }
 }
 
-// PATCH /api/requests/[id] - Update request status, add note, or edit request details
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
@@ -219,10 +232,16 @@ export async function PATCH(
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
+    const authUser: AuthUser = {
+      id: user.id,
+      role: user.role,
+    };
+
     // Check if user has permission to edit
     if (
-      user.role !== "ADMIN" &&
-      (user.role !== "CUSTOMER_SERVICE" || request.createdBy !== user.id)
+      !isAdmin(authUser) &&
+      !isWarehouse(authUser) &&
+      !(isCustomerService(authUser) && request.createdBy === user.id)
     ) {
       return NextResponse.json(
         { error: "You don't have permission to edit this request" },
@@ -237,7 +256,14 @@ export async function PATCH(
       palletCount,
       routeInfo,
       additionalNotes,
-    } = body;
+    } = body as {
+      shipmentNumber: string;
+      plant?: string;
+      trailers: TrailerWithParts[];
+      palletCount: number;
+      routeInfo?: string;
+      additionalNotes?: string;
+    };
 
     // Validate required fields
     if (!shipmentNumber || !trailers?.length || !palletCount) {
@@ -276,7 +302,51 @@ export async function PATCH(
         }`
       );
     if (additionalNotes !== request.additionalNotes)
-      changes.push(`additional notes`);
+      changes.push(
+        `additional notes from ${request.additionalNotes || "none"} to ${
+          additionalNotes || "none"
+        }`
+      );
+
+    // Track part number changes
+    const currentParts = request.partDetails.reduce<
+      Record<string, DbPartDetail>
+    >((acc, part) => {
+      const key = `${part.partNumber}-${part.trailer.trailerNumber}`;
+      acc[key] = part as DbPartDetail;
+      return acc;
+    }, {});
+
+    const newParts: PartChange[] = trailers.flatMap((trailer) =>
+      trailer.parts.map((part) => ({
+        key: `${part.partNumber}-${trailer.trailerNumber}`,
+        part,
+        trailerNumber: trailer.trailerNumber,
+      }))
+    );
+
+    // Compare parts and log changes
+    const partChanges: string[] = [];
+    newParts.forEach(({ key, part, trailerNumber }) => {
+      const currentPart = currentParts[key];
+      if (!currentPart) {
+        partChanges.push(
+          `added part ${part.partNumber} (qty: ${part.quantity}) to trailer ${trailerNumber}`
+        );
+      } else if (currentPart.quantity !== part.quantity) {
+        partChanges.push(
+          `changed quantity for part ${part.partNumber} from ${currentPart.quantity} to ${part.quantity} in trailer ${trailerNumber}`
+        );
+      }
+      delete currentParts[key];
+    });
+
+    // Log removed parts
+    Object.values(currentParts).forEach((part) => {
+      partChanges.push(
+        `removed part ${part.partNumber} from trailer ${part.trailer.trailerNumber}`
+      );
+    });
 
     // Update the request in a transaction
     const updatedRequest = await prisma.$transaction(async (tx) => {
@@ -298,27 +368,36 @@ export async function PATCH(
           routeInfo,
           additionalNotes,
           logs: {
-            create:
-              changes.length > 0
-                ? {
-                    action: `Request edited: Changed ${changes.join(", ")}`,
-                    performedBy: user.id,
-                  }
-                : undefined,
+            create: [
+              ...(changes.length > 0
+                ? [
+                    {
+                      action: `Request details changed: ${changes.join(", ")}`,
+                      performedBy: user.id,
+                    },
+                  ]
+                : []),
+              ...(partChanges.length > 0
+                ? [
+                    {
+                      action: `Part changes: ${partChanges.join("; ")}`,
+                      performedBy: user.id,
+                    },
+                  ]
+                : []),
+            ],
           },
         },
       });
 
       // Create new trailers and parts
       for (const trailerData of trailers) {
-        // Create or find trailer
         const trailer = await tx.trailer.upsert({
           where: { trailerNumber: trailerData.trailerNumber },
           create: { trailerNumber: trailerData.trailerNumber },
           update: {},
         });
 
-        // Link trailer to request
         await tx.requestTrailer.create({
           data: {
             request: { connect: { id: request.id } },
@@ -326,7 +405,6 @@ export async function PATCH(
           },
         });
 
-        // Create parts for this trailer
         await Promise.all(
           trailerData.parts.map((part: Part) =>
             tx.partDetail.create({
@@ -341,7 +419,6 @@ export async function PATCH(
         );
       }
 
-      // Return complete request with all relations
       return tx.mustGoRequest.findUnique({
         where: { id: params.id },
         include: {
@@ -395,7 +472,6 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/requests/[id] - Soft delete a request (admin only)
 export async function DELETE(
   req: Request,
   { params }: { params: { id: string } }

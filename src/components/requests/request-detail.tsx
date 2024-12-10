@@ -294,6 +294,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
     : false;
   const canEdit = authUser
     ? (authUser.role === "ADMIN" ||
+        isWarehouse(authUser) ||
         (authUser.role === "CUSTOMER_SERVICE" &&
           request.creator.id === authUser.id)) &&
       !request.deleted
@@ -478,7 +479,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Request Details</h1>
         <div className="space-x-2">
@@ -491,7 +492,37 @@ export default function RequestDetail({ id }: RequestDetailProps) {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Created By</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="text-sm text-muted-foreground">Name</div>
+              <div className="font-medium">{request.creator.name}</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Role</div>
+              <div className="font-medium">{request.creator.role}</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Date</div>
+              <div className="font-medium">
+                {new Date(request.createdAt).toLocaleString()}
+              </div>
+            </div>
+            {request.deleted && request.deletedAt && (
+              <div>
+                <div className="text-sm text-muted-foreground">Deleted At</div>
+                <div className="font-medium text-destructive">
+                  {new Date(request.deletedAt).toLocaleString()}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Request Information</CardTitle>
@@ -570,134 +601,106 @@ export default function RequestDetail({ id }: RequestDetailProps) {
           </CardContent>
         </Card>
 
+        {canUpdateStatus && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Update Request</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Status</div>
+                <Select
+                  value={newStatus}
+                  onValueChange={(value: string) =>
+                    setNewStatus(value as RequestStatus)
+                  }
+                >
+                  <SelectTrigger className="bg-background text-foreground border border-border shadow-sm rounted-md">
+                    <SelectValue placeholder="Select new status" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background text-foreground border border-border shadow-sm rounted-md">
+                    {Object.values(RequestStatus).map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status.replace("_", " ")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Add Note</div>
+                <Textarea
+                  placeholder="Add a note (optional)"
+                  value={note}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setNote(e.target.value)
+                  }
+                  rows={4}
+                />
+              </div>
+
+              <Button
+                onClick={handleUpdate}
+                disabled={
+                  updating ||
+                  (!note && (!newStatus || newStatus === request.status))
+                }
+                className="w-full"
+              >
+                {updating ? "Updating..." : "Update Request"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle>Created By</CardTitle>
+            <CardTitle>Notes</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <div className="text-sm text-muted-foreground">Name</div>
-              <div className="font-medium">{request.creator.name}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Role</div>
-              <div className="font-medium">{request.creator.role}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Date</div>
-              <div className="font-medium">
-                {new Date(request.createdAt).toLocaleString()}
-              </div>
-            </div>
-            {request.deleted && request.deletedAt && (
-              <div>
-                <div className="text-sm text-muted-foreground">Deleted At</div>
-                <div className="font-medium text-destructive">
-                  {new Date(request.deletedAt).toLocaleString()}
+          <CardContent>
+            <div className="space-y-4">
+              {notes.length > 0 ? (
+                notes.map((note: string, index: number) => (
+                  <div key={index} className="bg-muted p-3 rounded">
+                    {note}
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No notes yet
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {request.logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-start justify-between border-b pb-4 last:border-0"
+                >
+                  <div>
+                    <div className="font-medium">{log.action}</div>
+                    <div className="text-sm text-muted-foreground">
+                      By {log.performer.name} ({log.performer.role})
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {new Date(log.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
-
-      {canUpdateStatus && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Update Request</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Status</div>
-              <Select
-                value={newStatus}
-                onValueChange={(value: string) =>
-                  setNewStatus(value as RequestStatus)
-                }
-              >
-                <SelectTrigger className="bg-background text-foreground border border-border shadow-sm rounted-md">
-                  <SelectValue placeholder="Select new status" />
-                </SelectTrigger>
-                <SelectContent className="bg-background text-foreground border border-border shadow-sm rounted-md">
-                  {Object.values(RequestStatus).map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {status.replace("_", " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Add Note</div>
-              <Textarea
-                placeholder="Add a note (optional)"
-                value={note}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setNote(e.target.value)
-                }
-                rows={4}
-              />
-            </div>
-
-            <Button
-              onClick={handleUpdate}
-              disabled={
-                updating ||
-                (!note && (!newStatus || newStatus === request.status))
-              }
-              className="w-full"
-            >
-              {updating ? "Updating..." : "Update Request"}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Notes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {notes.length > 0 ? (
-              notes.map((note: string, index: number) => (
-                <div key={index} className="bg-muted p-3 rounded">
-                  {note}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-muted-foreground">No notes yet</div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {request.logs.map((log) => (
-              <div
-                key={log.id}
-                className="flex items-start justify-between border-b pb-4 last:border-0"
-              >
-                <div>
-                  <div className="font-medium">{log.action}</div>
-                  <div className="text-sm text-muted-foreground">
-                    By {log.performer.name} ({log.performer.role})
-                  </div>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {new Date(log.timestamp).toLocaleString()}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

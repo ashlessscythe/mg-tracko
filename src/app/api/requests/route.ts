@@ -16,20 +16,18 @@ export async function GET(req: Request) {
     }
 
     const user = session.user as SessionUser;
-    console.log("User role:", user.role); // Debug log
+    console.log("User role:", user.role);
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
     const includeDeleted = searchParams.get("includeDeleted") === "true";
 
-    // Base where clause
     const where: Prisma.MustGoRequestWhereInput = {
       ...(status && { status: status as RequestStatus }),
       ...(!includeDeleted && { deleted: false }),
     };
 
-    // Add search conditions if search param exists
     if (search) {
       where.OR = [
         {
@@ -63,13 +61,9 @@ export async function GET(req: Request) {
       ];
     }
 
-    // Add role-based filtering
     if (user.role === "CUSTOMER_SERVICE") {
       where.createdBy = user.id;
     }
-    // Admin sees all requests
-
-    console.log("Query where clause:", where); // Debug log
 
     const requests = await prisma.mustGoRequest.findMany({
       where,
@@ -107,8 +101,6 @@ export async function GET(req: Request) {
       },
     });
 
-    console.log("Found requests:", requests.length); // Debug log
-
     return NextResponse.json(requests);
   } catch (error) {
     console.error("Error fetching requests:", error);
@@ -142,23 +134,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = (await req.json()) as FormData & {
-      parts: Array<{ partNumber: string; quantity: number }>;
-      trailerNumber: string;
-    };
+    const body = (await req.json()) as FormData;
 
     const {
       shipmentNumber,
       plant,
-      parts,
+      trailers,
       palletCount,
       routeInfo,
       additionalNotes,
-      trailerNumber,
     } = body;
 
     // Validate required fields
-    if (!shipmentNumber || !parts?.length || !palletCount || !trailerNumber) {
+    if (!shipmentNumber || !trailers?.length || !palletCount) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -173,20 +161,27 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validate trailers and parts
+    for (const trailer of trailers) {
+      if (!trailer.trailerNumber) {
+        return NextResponse.json(
+          { error: "All trailer numbers are required" },
+          { status: 400 }
+        );
+      }
+      if (!trailer.parts?.length) {
+        return NextResponse.json(
+          {
+            error: `Trailer ${trailer.trailerNumber} must have at least one part number`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Create everything in a transaction to ensure data consistency
     const result = await prisma.$transaction(async (tx) => {
-      // Create or find the trailer first
-      const trailer = await tx.trailer.upsert({
-        where: {
-          trailerNumber,
-        },
-        create: {
-          trailerNumber,
-        },
-        update: {},
-      });
-
-      // Create the request
+      // Create the request first
       const request = await tx.mustGoRequest.create({
         data: {
           shipmentNumber,
@@ -195,45 +190,50 @@ export async function POST(req: Request) {
           routeInfo,
           additionalNotes,
           createdBy: user.id,
-          trailers: {
-            create: {
-              trailer: {
-                connect: {
-                  id: trailer.id,
-                },
-              },
-            },
-          },
           logs: {
             create: {
-              action: `Request created with ${parts.length} part number(s)`,
+              action: `Request created with ${trailers.length} trailer(s)`,
               performedBy: user.id,
             },
           },
         },
       });
 
-      // Create part details with both request and trailer connections
-      await Promise.all(
-        parts.map((part) =>
-          tx.partDetail.create({
-            data: {
-              partNumber: part.partNumber,
-              quantity: part.quantity,
-              request: {
-                connect: {
-                  id: request.id,
-                },
+      // Process each trailer and its parts
+      for (const trailerData of trailers) {
+        // Create or find the trailer
+        const trailer = await tx.trailer.upsert({
+          where: {
+            trailerNumber: trailerData.trailerNumber,
+          },
+          create: {
+            trailerNumber: trailerData.trailerNumber,
+          },
+          update: {},
+        });
+
+        // Link trailer to request
+        await tx.requestTrailer.create({
+          data: {
+            requestId: request.id,
+            trailerId: trailer.id,
+          },
+        });
+
+        // Create part details for this trailer
+        await Promise.all(
+          trailerData.parts.map((part) =>
+            tx.partDetail.create({
+              data: {
+                partNumber: part.partNumber,
+                quantity: part.quantity,
+                requestId: request.id,
+                trailerId: trailer.id,
               },
-              trailer: {
-                connect: {
-                  id: trailer.id,
-                },
-              },
-            },
-          })
-        )
-      );
+            })
+          )
+        );
+      }
 
       // Return complete request with all relations
       return tx.mustGoRequest.findUnique({

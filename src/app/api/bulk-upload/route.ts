@@ -106,8 +106,18 @@ function groupDataByCriteria(
 
     if (!groupedData[groupKey]) {
       groupedData[groupKey] = {
-        shipmentNumber:
-          splitCriteria === "part" ? `${partNumber}-group` : shipmentNumber,
+        shipmentNumber: (() => {
+          switch (splitCriteria) {
+            case "trailer":
+              return `group-${trailerNumber || "no-trailer"}-${shipmentNumber}`;
+            case "part":
+              return `${partNumber}-group`;
+            case "route":
+              return `group-${routeInfo || "no-route"}-${shipmentNumber}`;
+            default:
+              return shipmentNumber;
+          }
+        })(),
         plant,
         routeInfo,
         parts: [],
