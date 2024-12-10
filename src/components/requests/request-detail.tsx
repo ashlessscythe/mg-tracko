@@ -129,7 +129,6 @@ export default function RequestDetail({ id }: RequestDetailProps) {
     return <div>Request not found</div>;
   }
 
-  // Create AuthUser from session user if available
   const authUser: AuthUser | null = user
     ? {
         id: user.id,
@@ -137,11 +136,9 @@ export default function RequestDetail({ id }: RequestDetailProps) {
       }
     : null;
 
-  // Use the consistent role check helpers
   const canUpdateStatus = authUser ? isWarehouse(authUser) : false;
-
-  // Initialize notes array if undefined
   const notes = request.notes || [];
+  const partDetails = request.partDetails || [];
 
   return (
     <div className="space-y-6">
@@ -170,12 +167,26 @@ export default function RequestDetail({ id }: RequestDetailProps) {
                 <div className="font-medium">{request.plant}</div>
               </div>
             )}
+            {request.trailerNumber && (
+              <div>
+                <div className="text-sm text-muted-foreground">
+                  Trailer Number
+                </div>
+                <div className="font-medium">{request.trailerNumber}</div>
+              </div>
+            )}
             <div>
-              <div className="text-sm text-muted-foreground">Part Numbers</div>
+              <div className="text-sm text-muted-foreground">Parts</div>
               <div className="font-medium space-y-1">
-                {request.partNumbers.map((pn: string, index: number) => (
-                  <div key={index} className="bg-muted px-2 py-1 rounded">
-                    {pn}
+                {partDetails.map((part, index) => (
+                  <div
+                    key={index}
+                    className="bg-muted px-2 py-1 rounded flex justify-between"
+                  >
+                    <span>{part.partNumber}</span>
+                    <span className="text-muted-foreground">
+                      Qty: {part.quantity}
+                    </span>
                   </div>
                 ))}
               </div>

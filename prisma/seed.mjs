@@ -50,7 +50,14 @@ function generatePartWithQuantity() {
   // Generate quantity that's a multiple of 24 (between 24 and 240)
   const quantity = faker.number.int({ min: 1, max: 10 }) * 24;
 
-  return { number: partNumber, quantity };
+  return { partNumber, quantity };
+}
+
+// Helper function to generate trailer number
+function generateTrailerNumber() {
+  const prefix = faker.helpers.arrayElement(["SL", "ST", "B"]);
+  const number = faker.number.int({ min: 10000, max: 99999 });
+  return `${prefix}${number}`;
 }
 
 // Helper function to generate realistic notes
@@ -89,6 +96,7 @@ async function hashPassword(password) {
 async function clearDatabase() {
   console.log("Clearing database...");
   await prisma.requestLog.deleteMany();
+  await prisma.partDetail.deleteMany();
   await prisma.mustGoRequest.deleteMany();
   await prisma.user.deleteMany();
   console.log("Database cleared");
@@ -142,10 +150,10 @@ async function main() {
   // Create must-go requests
   const requests = [];
   for (let i = 0; i < argv.count; i++) {
-    // Generate 1-3 part numbers with quantities
-    const partNumberCount = faker.number.int({ min: 1, max: 3 });
+    // Generate 1-3 parts with quantities
+    const partCount = faker.number.int({ min: 1, max: 3 });
     const selectedParts = Array.from(
-      { length: partNumberCount },
+      { length: partCount },
       generatePartWithQuantity
     );
 
@@ -166,13 +174,20 @@ async function main() {
           length: 10,
           casing: "upper",
         }),
-        partNumbers: selectedParts.map((p) => p.number),
+        plant: faker.helpers.arrayElement(["FV58", "PL45", "WH23", "DK89"]),
+        trailerNumber: generateTrailerNumber(),
         palletCount: totalPalletCount,
         status: statuses[Math.floor(Math.random() * statuses.length)],
         routeInfo: faker.location.streetAddress(),
         additionalNotes: selectedNotes,
         createdBy:
           createdUsers[Math.floor(Math.random() * createdUsers.length)].id,
+        partDetails: {
+          create: selectedParts,
+        },
+      },
+      include: {
+        partDetails: true,
       },
     });
     requests.push(request);

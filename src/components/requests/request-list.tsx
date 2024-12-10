@@ -18,7 +18,12 @@ import type { RequestDetail } from "@/lib/types";
 
 type SortableField = keyof Pick<
   RequestDetail,
-  "shipmentNumber" | "plant" | "palletCount" | "status" | "createdAt"
+  | "shipmentNumber"
+  | "plant"
+  | "trailerNumber"
+  | "palletCount"
+  | "status"
+  | "createdAt"
 >;
 
 export default function RequestList() {
@@ -81,6 +86,11 @@ export default function RequestList() {
         break;
       case "plant":
         compareResult = (a.plant || "").localeCompare(b.plant || "");
+        break;
+      case "trailerNumber":
+        compareResult = (a.trailerNumber || "").localeCompare(
+          b.trailerNumber || ""
+        );
         break;
       case "palletCount":
         compareResult = a.palletCount - b.palletCount;
@@ -149,7 +159,13 @@ export default function RequestList() {
             >
               Plant
             </TableHead>
-            <TableHead>Part Numbers</TableHead>
+            <TableHead
+              className="cursor-pointer"
+              onClick={() => handleSort("trailerNumber")}
+            >
+              Trailer #
+            </TableHead>
+            <TableHead>Parts</TableHead>
             <TableHead
               className="cursor-pointer"
               onClick={() => handleSort("palletCount")}
@@ -177,11 +193,12 @@ export default function RequestList() {
             <TableRow key={request.id}>
               <TableCell>{request.shipmentNumber}</TableCell>
               <TableCell>{request.plant || "-"}</TableCell>
+              <TableCell>{request.trailerNumber || "-"}</TableCell>
               <TableCell>
                 <div className="space-y-1">
-                  {request.partNumbers.map((pn, index) => (
+                  {request.partDetails.map((part, index) => (
                     <div key={index} className="text-sm">
-                      {pn}
+                      {part.partNumber} ({part.quantity})
                     </div>
                   ))}
                 </div>

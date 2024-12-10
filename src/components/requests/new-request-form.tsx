@@ -9,16 +9,22 @@ import { useToast } from "@/hooks/use-toast";
 import { RequestStatus } from "@prisma/client";
 import type { FormData } from "@/lib/types";
 
+interface PartInput {
+  partNumber: string;
+  quantity: number;
+}
+
 export default function NewRequestForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [rawPartNumbers, setRawPartNumbers] = useState("");
+  const [rawPartInput, setRawPartInput] = useState("");
   const [formData, setFormData] = useState<FormData>({
     shipmentNumber: "",
     plant: "",
-    partNumbers: [],
+    parts: [],
     palletCount: 1,
+    trailerNumber: "",
     routeInfo: "",
     additionalNotes: "",
     status: RequestStatus.PENDING,
@@ -29,13 +35,23 @@ export default function NewRequestForm() {
     setIsLoading(true);
 
     try {
-      // Parse part numbers from the raw text
-      const partNumbers = rawPartNumbers
-        .split(/[\n,]/) // Split by newline or comma
-        .map((pn) => pn.trim()) // Trim whitespace
-        .filter((pn) => pn.length > 0); // Remove empty strings
+      // Parse part numbers and quantities from the raw text
+      const parts: PartInput[] = rawPartInput
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => {
+          const [partNumber, quantityStr] = line
+            .split(/[,\t]/)
+            .map((s) => s.trim());
+          const quantity = parseInt(quantityStr) || 1;
+          if (!partNumber) {
+            throw new Error("Each line must contain a part number");
+          }
+          return { partNumber, quantity };
+        });
 
-      if (partNumbers.length === 0) {
+      if (parts.length === 0) {
         throw new Error("At least one part number is required");
       }
 
@@ -46,7 +62,7 @@ export default function NewRequestForm() {
 
       const requestData = {
         ...formData,
-        partNumbers,
+        parts,
       };
 
       const response = await fetch("/api/requests", {
@@ -85,8 +101,8 @@ export default function NewRequestForm() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    if (name === "partNumbers") {
-      setRawPartNumbers(value);
+    if (name === "parts") {
+      setRawPartInput(value);
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -124,18 +140,29 @@ export default function NewRequestForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="partNumbers">Part Numbers *</Label>
+        <Label htmlFor="trailerNumber">Trailer Number</Label>
+        <Input
+          id="trailerNumber"
+          name="trailerNumber"
+          value={formData.trailerNumber || ""}
+          onChange={handleChange}
+          placeholder="Enter trailer number"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="parts">Part Numbers and Quantities *</Label>
         <Textarea
-          id="partNumbers"
-          name="partNumbers"
-          value={rawPartNumbers}
+          id="parts"
+          name="parts"
+          value={rawPartInput}
           onChange={handleChange}
           required
-          placeholder="Paste part numbers here (one per line or comma-separated)"
+          placeholder="Enter part numbers and quantities (one per line, separated by comma or tab)&#10;Example:&#10;35834569, 6&#10;35834578, 12"
           rows={5}
         />
         <p className="text-sm text-muted-foreground">
-          Paste part numbers from Excel, one per line or comma-separated
+          Format: Part Number, Quantity (one per line)
         </p>
       </div>
 
