@@ -32,8 +32,13 @@ export async function GET(req: Request) {
             },
           },
           {
-            partNumbers: {
-              hasSome: [search],
+            partDetails: {
+              some: {
+                partNumber: {
+                  contains: search,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
             },
           },
         ],
@@ -55,6 +60,7 @@ export async function GET(req: Request) {
             role: true,
           },
         },
+        partDetails: true,
         logs: {
           include: {
             performer: {
@@ -107,18 +113,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = (await req.json()) as FormData;
+    const body = (await req.json()) as FormData & {
+      parts: Array<{ partNumber: string; quantity: number }>;
+    };
+
     const {
       shipmentNumber,
       plant,
-      partNumbers,
+      parts,
       palletCount,
       routeInfo,
       additionalNotes,
+      trailerNumber,
     } = body;
 
     // Validate required fields
-    if (!shipmentNumber || !partNumbers?.length || !palletCount) {
+    if (!shipmentNumber || !parts?.length || !palletCount) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -137,7 +147,7 @@ export async function POST(req: Request) {
     const requestData: Prisma.MustGoRequestCreateInput = {
       shipmentNumber,
       plant,
-      partNumbers,
+      trailerNumber,
       palletCount,
       routeInfo,
       additionalNotes,
@@ -146,9 +156,15 @@ export async function POST(req: Request) {
           id: user.id,
         },
       },
+      partDetails: {
+        create: parts.map((part) => ({
+          partNumber: part.partNumber,
+          quantity: part.quantity,
+        })),
+      },
       logs: {
         create: {
-          action: `Request created with ${partNumbers.length} part number(s)`,
+          action: `Request created with ${parts.length} part number(s)`,
           performer: {
             connect: {
               id: user.id,
@@ -169,6 +185,7 @@ export async function POST(req: Request) {
             role: true,
           },
         },
+        partDetails: true,
         logs: {
           include: {
             performer: {

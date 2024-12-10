@@ -22,13 +22,14 @@ model User {
 model MustGoRequest {
   id              String        @id @default(cuid())
   shipmentNumber  String
-  plant           String?       // Made plant field optional
-  partNumbers     String[]     
+  plant           String?
+  partDetails     PartDetail[]  // New relation for part numbers with quantities
+  trailerNumber   String?       // Added trailer number
   palletCount     Int
   status          RequestStatus @default(PENDING)
   routeInfo       String?
   additionalNotes String?
-  notes           String[]      @default([])  // Array of notes
+  notes           String[]      @default([])
   createdBy       String        
   creator         User          @relation("CreatedBy", fields: [createdBy], references: [id])
   createdAt       DateTime      @default(now())
@@ -36,6 +37,17 @@ model MustGoRequest {
   logs            RequestLog[]  @relation("RequestLogs")
 
   @@index([createdBy])
+}
+
+// New model to store part numbers with quantities
+model PartDetail {
+  id              String        @id @default(cuid())
+  partNumber      String
+  quantity        Int
+  requestId       String
+  request         MustGoRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
 }
 
 model RequestLog {

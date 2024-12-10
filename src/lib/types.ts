@@ -12,11 +12,18 @@ export interface AuthUser {
   role: Role;
 }
 
+export interface PartDetail {
+  id: string;
+  partNumber: string;
+  quantity: number;
+}
+
 export interface RequestDetail {
   id: string;
   shipmentNumber: string;
   plant?: string | null;
-  partNumbers: string[];
+  trailerNumber?: string | null;
+  partDetails: PartDetail[];
   palletCount: number;
   status: RequestStatus;
   routeInfo?: string | null;
@@ -44,7 +51,11 @@ export interface RequestLog {
 export interface FormData {
   shipmentNumber: string;
   plant?: string | null;
-  partNumbers: string[];
+  trailerNumber?: string | null;
+  parts: Array<{
+    partNumber: string;
+    quantity: number;
+  }>;
   palletCount: number;
   routeInfo?: string | null;
   additionalNotes?: string | null;

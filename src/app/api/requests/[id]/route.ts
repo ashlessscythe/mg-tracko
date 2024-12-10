@@ -36,6 +36,7 @@ export async function GET(
             role: true,
           },
         },
+        partDetails: true,
         logs: {
           include: {
             performer: {
@@ -74,33 +75,18 @@ export async function PATCH(
   try {
     const session = await getServerSession(authOptions);
 
-    // Debug session
-    console.log("Session in PATCH:", {
-      sessionUser: session?.user,
-      fullSession: session,
-    });
-
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const user = session.user as SessionUser;
 
-    // Create AuthUser from session
     const authUser: AuthUser = {
       id: user.id,
       role: user.role,
     };
 
-    // Use the consistent isWarehouse helper
     const hasPermission = isWarehouse(authUser);
-
-    // Debug permission check
-    console.log("Permission check:", {
-      userRole: user.role,
-      hasPermission,
-      authUser,
-    });
 
     if (!hasPermission) {
       return NextResponse.json(
@@ -112,10 +98,6 @@ export async function PATCH(
     const body = (await req.json()) as UpdateRequestData;
     const { status, note } = body;
 
-    // Debug request body
-    console.log("Request body:", { status, note });
-
-    // Validate if updating status
     if (status && !Object.values(RequestStatus).includes(status)) {
       return NextResponse.json(
         { error: "Invalid status provided" },
@@ -123,7 +105,6 @@ export async function PATCH(
       );
     }
 
-    // Get current request
     const currentRequest = await prisma.mustGoRequest.findUnique({
       where: { id: params.id },
       select: { notes: true },
@@ -133,7 +114,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    // Update request
     const updateData: any = {};
     if (status) {
       updateData.status = status;
@@ -163,6 +143,7 @@ export async function PATCH(
             role: true,
           },
         },
+        partDetails: true,
         logs: {
           include: {
             performer: {
@@ -181,9 +162,6 @@ export async function PATCH(
 
     return NextResponse.json(updatedRequest);
   } catch (error) {
-    // Debug any errors
-    console.error("Error in PATCH:", error);
-
     if (
       error instanceof Error &&
       error.message.includes("Record to update not found")
