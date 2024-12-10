@@ -11,6 +11,12 @@ import type {
 } from "@/lib/types";
 import { isWarehouse } from "@/lib/auth";
 
+// Define the part type to fix TypeScript error
+interface Part {
+  partNumber: string;
+  quantity: number;
+}
+
 // GET /api/requests/[id] - Get a single request by ID
 export async function GET(
   req: NextRequest,
@@ -41,7 +47,16 @@ export async function GET(
             role: true,
           },
         },
-        partDetails: true,
+        trailers: {
+          include: {
+            trailer: true,
+          },
+        },
+        partDetails: {
+          include: {
+            trailer: true,
+          },
+        },
         logs: {
           include: {
             performer: {
@@ -153,7 +168,16 @@ export async function PATCH(
               role: true,
             },
           },
-          partDetails: true,
+          trailers: {
+            include: {
+              trailer: true,
+            },
+          },
+          partDetails: {
+            include: {
+              trailer: true,
+            },
+          },
           logs: {
             include: {
               performer: {
@@ -176,7 +200,19 @@ export async function PATCH(
     // This is a request edit
     const request = await prisma.mustGoRequest.findUnique({
       where: { id: params.id },
-      include: { creator: true, partDetails: true },
+      include: {
+        creator: true,
+        trailers: {
+          include: {
+            trailer: true,
+          },
+        },
+        partDetails: {
+          include: {
+            trailer: true,
+          },
+        },
+      },
     });
 
     if (!request) {
@@ -197,15 +233,14 @@ export async function PATCH(
     const {
       shipmentNumber,
       plant,
-      trailerNumber,
+      trailers,
       palletCount,
       routeInfo,
       additionalNotes,
-      parts,
     } = body;
 
     // Validate required fields
-    if (!shipmentNumber || !parts?.length || !palletCount) {
+    if (!shipmentNumber || !trailers?.length || !palletCount) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -230,12 +265,6 @@ export async function PATCH(
       changes.push(
         `plant from ${request.plant || "none"} to ${plant || "none"}`
       );
-    if (trailerNumber !== request.trailerNumber)
-      changes.push(
-        `trailer number from ${request.trailerNumber || "none"} to ${
-          trailerNumber || "none"
-        }`
-      );
     if (palletCount !== request.palletCount)
       changes.push(
         `pallet count from ${request.palletCount} to ${palletCount}`
@@ -249,109 +278,105 @@ export async function PATCH(
     if (additionalNotes !== request.additionalNotes)
       changes.push(`additional notes`);
 
-    // Compare parts
-    const existingParts = new Set(
-      request.partDetails.map(
-        (p: PartDetail) => `${p.partNumber}:${p.quantity}`
-      )
-    );
-    const newParts = new Set(
-      parts.map(
-        (p: { partNumber: string; quantity: number }) =>
-          `${p.partNumber}:${p.quantity}`
-      )
-    );
-
-    // Find removed parts
-    const removedParts = request.partDetails.filter(
-      (p: PartDetail) => !newParts.has(`${p.partNumber}:${p.quantity}`)
-    );
-    // Find added parts
-    const addedParts = parts.filter(
-      (p: { partNumber: string; quantity: number }) =>
-        !existingParts.has(`${p.partNumber}:${p.quantity}`)
-    );
-
-    // Create part change logs
-    const partLogs = [];
-    if (removedParts.length > 0) {
-      partLogs.push({
-        action: `Removed part numbers: ${removedParts
-          .map((p: PartDetail) => `${p.partNumber} (${p.quantity})`)
-          .join(", ")}`,
-        performedBy: user.id,
+    // Update the request in a transaction
+    const updatedRequest = await prisma.$transaction(async (tx) => {
+      // Delete existing trailers and parts
+      await tx.requestTrailer.deleteMany({
+        where: { requestId: params.id },
       });
-    }
-    if (addedParts.length > 0) {
-      partLogs.push({
-        action: `Added part numbers: ${addedParts
-          .map(
-            (p: { partNumber: string; quantity: number }) =>
-              `${p.partNumber} (${p.quantity})`
-          )
-          .join(", ")}`,
-        performedBy: user.id,
+      await tx.partDetail.deleteMany({
+        where: { requestId: params.id },
       });
-    }
 
-    // Update the request
-    const updatedRequest = await prisma.mustGoRequest.update({
-      where: { id: params.id },
-      data: {
-        shipmentNumber,
-        plant,
-        trailerNumber,
-        palletCount,
-        routeInfo,
-        additionalNotes,
-        partDetails: {
-          deleteMany: {},
-          create: parts.map(
-            (part: { partNumber: string; quantity: number }) => ({
-              partNumber: part.partNumber,
-              quantity: part.quantity,
-            })
-          ),
-        },
-        logs: {
-          create: [
-            // Main changes log
-            ...(changes.length > 0
-              ? [
-                  {
+      // Update the request
+      const request = await tx.mustGoRequest.update({
+        where: { id: params.id },
+        data: {
+          shipmentNumber,
+          plant,
+          palletCount,
+          routeInfo,
+          additionalNotes,
+          logs: {
+            create:
+              changes.length > 0
+                ? {
                     action: `Request edited: Changed ${changes.join(", ")}`,
                     performedBy: user.id,
-                  },
-                ]
-              : []),
-            // Part change logs
-            ...partLogs,
-          ],
-        },
-      },
-      include: {
-        creator: {
-          select: {
-            name: true,
-            email: true,
-            role: true,
+                  }
+                : undefined,
           },
         },
-        partDetails: true,
-        logs: {
-          include: {
-            performer: {
-              select: {
-                name: true,
-                role: true,
+      });
+
+      // Create new trailers and parts
+      for (const trailerData of trailers) {
+        // Create or find trailer
+        const trailer = await tx.trailer.upsert({
+          where: { trailerNumber: trailerData.trailerNumber },
+          create: { trailerNumber: trailerData.trailerNumber },
+          update: {},
+        });
+
+        // Link trailer to request
+        await tx.requestTrailer.create({
+          data: {
+            request: { connect: { id: request.id } },
+            trailer: { connect: { id: trailer.id } },
+          },
+        });
+
+        // Create parts for this trailer
+        await Promise.all(
+          trailerData.parts.map((part: Part) =>
+            tx.partDetail.create({
+              data: {
+                partNumber: part.partNumber,
+                quantity: part.quantity,
+                request: { connect: { id: request.id } },
+                trailer: { connect: { id: trailer.id } },
               },
+            })
+          )
+        );
+      }
+
+      // Return complete request with all relations
+      return tx.mustGoRequest.findUnique({
+        where: { id: params.id },
+        include: {
+          creator: {
+            select: {
+              name: true,
+              email: true,
+              role: true,
             },
           },
-          orderBy: {
-            timestamp: "desc",
+          trailers: {
+            include: {
+              trailer: true,
+            },
+          },
+          partDetails: {
+            include: {
+              trailer: true,
+            },
+          },
+          logs: {
+            include: {
+              performer: {
+                select: {
+                  name: true,
+                  role: true,
+                },
+              },
+            },
+            orderBy: {
+              timestamp: "desc",
+            },
           },
         },
-      },
+      });
     });
 
     return NextResponse.json(updatedRequest);

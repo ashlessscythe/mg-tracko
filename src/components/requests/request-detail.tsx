@@ -23,10 +23,23 @@ import type {
   AuthUser,
   RequestDetail as RequestDetailType,
   PartDetail,
+  FormData,
 } from "@/lib/types";
 
 interface RequestDetailProps {
   id: string;
+}
+
+interface PartsByTrailer {
+  [trailerNumber: string]: {
+    trailerId: string;
+    parts: PartDetail[];
+  };
+}
+
+interface TrailerParts {
+  trailerNumber: string;
+  parts: { partNumber: string; quantity: number }[];
 }
 
 export default function RequestDetail({ id }: RequestDetailProps) {
@@ -39,14 +52,13 @@ export default function RequestDetail({ id }: RequestDetailProps) {
   const [newStatus, setNewStatus] = useState<RequestStatus | "">("");
   const [note, setNote] = useState("");
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<FormData>({
     shipmentNumber: "",
     plant: "",
-    trailerNumber: "",
     palletCount: 0,
     routeInfo: "",
     additionalNotes: "",
-    parts: [] as { partNumber: string; quantity: number }[],
+    trailers: [],
   });
 
   const fetchRequest = useCallback(async () => {
@@ -56,20 +68,42 @@ export default function RequestDetail({ id }: RequestDetailProps) {
         throw new Error("Failed to fetch request");
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as RequestDetailType;
       setRequest(data);
       setNewStatus(data.status);
+
+      // Group parts by trailer
+      const partsByTrailer = (data.partDetails || []).reduce(
+        (acc: PartsByTrailer, part: PartDetail) => {
+          const trailerNumber = part.trailer?.trailerNumber || "Unknown";
+          if (!acc[trailerNumber]) {
+            acc[trailerNumber] = {
+              trailerId: part.trailer?.id || "",
+              parts: [],
+            };
+          }
+          acc[trailerNumber].parts.push(part);
+          return acc;
+        },
+        {}
+      );
+
+      // Set edit form with grouped parts
       setEditForm({
         shipmentNumber: data.shipmentNumber,
         plant: data.plant || "",
-        trailerNumber: data.trailerNumber || "",
         palletCount: data.palletCount,
         routeInfo: data.routeInfo || "",
         additionalNotes: data.additionalNotes || "",
-        parts: data.partDetails.map((part: PartDetail) => ({
-          partNumber: part.partNumber,
-          quantity: part.quantity,
-        })),
+        trailers: Object.entries(partsByTrailer).map(
+          ([trailerNumber, { parts }]): TrailerParts => ({
+            trailerNumber,
+            parts: parts.map((part) => ({
+              partNumber: part.partNumber,
+              quantity: part.quantity,
+            })),
+          })
+        ),
       });
     } catch (error: unknown) {
       const errorMessage =
@@ -173,29 +207,58 @@ export default function RequestDetail({ id }: RequestDetailProps) {
   };
 
   const handlePartChange = (
-    index: number,
+    trailerIndex: number,
+    partIndex: number,
     field: "partNumber" | "quantity",
     value: string
   ) => {
-    const newParts = [...editForm.parts];
+    const newTrailers = [...editForm.trailers];
+    const newParts = [...newTrailers[trailerIndex].parts];
     if (field === "quantity") {
-      newParts[index] = { ...newParts[index], [field]: parseInt(value) || 0 };
+      newParts[partIndex] = {
+        ...newParts[partIndex],
+        [field]: parseInt(value) || 0,
+      };
     } else {
-      newParts[index] = { ...newParts[index], [field]: value };
+      newParts[partIndex] = { ...newParts[partIndex], [field]: value };
     }
-    setEditForm({ ...editForm, parts: newParts });
+    newTrailers[trailerIndex] = {
+      ...newTrailers[trailerIndex],
+      parts: newParts,
+    };
+    setEditForm({ ...editForm, trailers: newTrailers });
   };
 
-  const addPart = () => {
+  const addPart = (trailerIndex: number) => {
+    const newTrailers = [...editForm.trailers];
+    newTrailers[trailerIndex].parts.push({ partNumber: "", quantity: 0 });
+    setEditForm({ ...editForm, trailers: newTrailers });
+  };
+
+  const removePart = (trailerIndex: number, partIndex: number) => {
+    const newTrailers = [...editForm.trailers];
+    newTrailers[trailerIndex].parts = newTrailers[trailerIndex].parts.filter(
+      (_, i) => i !== partIndex
+    );
+    setEditForm({ ...editForm, trailers: newTrailers });
+  };
+
+  const addTrailer = () => {
     setEditForm({
       ...editForm,
-      parts: [...editForm.parts, { partNumber: "", quantity: 0 }],
+      trailers: [...editForm.trailers, { trailerNumber: "", parts: [] }],
     });
   };
 
-  const removePart = (index: number) => {
-    const newParts = editForm.parts.filter((_, i) => i !== index);
-    setEditForm({ ...editForm, parts: newParts });
+  const removeTrailer = (index: number) => {
+    const newTrailers = editForm.trailers.filter((_, i) => i !== index);
+    setEditForm({ ...editForm, trailers: newTrailers });
+  };
+
+  const handleTrailerNumberChange = (index: number, value: string) => {
+    const newTrailers = [...editForm.trailers];
+    newTrailers[index] = { ...newTrailers[index], trailerNumber: value };
+    setEditForm({ ...editForm, trailers: newTrailers });
   };
 
   const getStatusBadgeColor = (status: RequestStatus) => {
@@ -236,7 +299,22 @@ export default function RequestDetail({ id }: RequestDetailProps) {
       !request.deleted
     : false;
   const notes = request.notes || [];
-  const partDetails = request.partDetails || [];
+
+  // Group parts by trailer
+  const partsByTrailer = (request.partDetails || []).reduce(
+    (acc: PartsByTrailer, part: PartDetail) => {
+      const trailerNumber = part.trailer?.trailerNumber || "Unknown";
+      if (!acc[trailerNumber]) {
+        acc[trailerNumber] = {
+          trailerId: part.trailer?.id || "",
+          parts: [],
+        };
+      }
+      acc[trailerNumber].parts.push(part);
+      return acc;
+    },
+    {}
+  );
 
   if (isEditing) {
     return (
@@ -271,7 +349,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
             <div className="space-y-2">
               <Label>Plant (4 characters)</Label>
               <Input
-                value={editForm.plant}
+                value={editForm.plant || ""}
                 onChange={(e) =>
                   setEditForm({ ...editForm, plant: e.target.value })
                 }
@@ -279,49 +357,84 @@ export default function RequestDetail({ id }: RequestDetailProps) {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Trailer Number</Label>
-              <Input
-                value={editForm.trailerNumber}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, trailerNumber: e.target.value })
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Parts</Label>
-              <div className="space-y-2">
-                {editForm.parts.map((part, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      placeholder="Part Number"
-                      value={part.partNumber}
-                      onChange={(e) =>
-                        handlePartChange(index, "partNumber", e.target.value)
-                      }
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Quantity"
-                      value={part.quantity}
-                      onChange={(e) =>
-                        handlePartChange(index, "quantity", e.target.value)
-                      }
-                    />
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => removePart(index)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-                <Button onClick={addPart} variant="outline" size="sm">
-                  Add Part
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <Label>Trailers and Parts</Label>
+                <Button onClick={addTrailer} variant="outline" size="sm">
+                  Add Trailer
                 </Button>
               </div>
+              {editForm.trailers.map((trailer, trailerIndex) => (
+                <Card key={trailerIndex}>
+                  <CardHeader className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label>Trailer Number</Label>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => removeTrailer(trailerIndex)}
+                      >
+                        Remove Trailer
+                      </Button>
+                    </div>
+                    <Input
+                      value={trailer.trailerNumber}
+                      onChange={(e) =>
+                        handleTrailerNumberChange(trailerIndex, e.target.value)
+                      }
+                      placeholder="Enter trailer number"
+                    />
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label>Parts</Label>
+                      <Button
+                        onClick={() => addPart(trailerIndex)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Add Part
+                      </Button>
+                    </div>
+                    {trailer.parts.map((part, partIndex) => (
+                      <div key={partIndex} className="flex gap-2">
+                        <Input
+                          placeholder="Part Number"
+                          value={part.partNumber}
+                          onChange={(e) =>
+                            handlePartChange(
+                              trailerIndex,
+                              partIndex,
+                              "partNumber",
+                              e.target.value
+                            )
+                          }
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Quantity"
+                          value={part.quantity}
+                          onChange={(e) =>
+                            handlePartChange(
+                              trailerIndex,
+                              partIndex,
+                              "quantity",
+                              e.target.value
+                            )
+                          }
+                        />
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => removePart(trailerIndex, partIndex)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
 
             <div className="space-y-2">
@@ -341,7 +454,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
             <div className="space-y-2">
               <Label>Route Info</Label>
               <Input
-                value={editForm.routeInfo}
+                value={editForm.routeInfo || ""}
                 onChange={(e) =>
                   setEditForm({ ...editForm, routeInfo: e.target.value })
                 }
@@ -351,7 +464,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
             <div className="space-y-2">
               <Label>Additional Notes</Label>
               <Textarea
-                value={editForm.additionalNotes}
+                value={editForm.additionalNotes || ""}
                 onChange={(e) =>
                   setEditForm({ ...editForm, additionalNotes: e.target.value })
                 }
@@ -396,28 +509,37 @@ export default function RequestDetail({ id }: RequestDetailProps) {
                 <div className="font-medium">{request.plant}</div>
               </div>
             )}
-            {request.trailerNumber && (
-              <div>
-                <div className="text-sm text-muted-foreground">
-                  Trailer Number
-                </div>
-                <div className="font-medium">{request.trailerNumber}</div>
-              </div>
-            )}
             <div>
-              <div className="text-sm text-muted-foreground">Parts</div>
-              <div className="font-medium space-y-1">
-                {partDetails.map((part, index) => (
-                  <div
-                    key={index}
-                    className="bg-muted px-2 py-1 rounded flex justify-between"
-                  >
-                    <span>{part.partNumber}</span>
-                    <span className="text-muted-foreground">
-                      Qty: {part.quantity}
-                    </span>
-                  </div>
-                ))}
+              <div className="text-sm text-muted-foreground">
+                Parts by Trailer
+              </div>
+              <div className="space-y-4">
+                {Object.entries(partsByTrailer).map(
+                  ([trailerNumber, { parts }]) => (
+                    <Card key={trailerNumber}>
+                      <CardHeader>
+                        <CardTitle className="text-base">
+                          Trailer: {trailerNumber}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-1">
+                          {parts.map((part, index) => (
+                            <div
+                              key={index}
+                              className="bg-muted px-2 py-1 rounded flex justify-between"
+                            >
+                              <span>{part.partNumber}</span>
+                              <span className="text-muted-foreground">
+                                Qty: {part.quantity}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                )}
               </div>
             </div>
             <div>
@@ -557,7 +679,7 @@ export default function RequestDetail({ id }: RequestDetailProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {request.logs.map((log: any) => (
+            {request.logs.map((log) => (
               <div
                 key={log.id}
                 className="flex items-start justify-between border-b pb-4 last:border-0"

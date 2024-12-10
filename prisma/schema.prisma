@@ -20,36 +20,63 @@ model User {
 }
 
 model MustGoRequest {
-  id              String        @id @default(cuid())
+  id              String          @id @default(cuid())
   shipmentNumber  String
   plant           String?
-  partDetails     PartDetail[]  // New relation for part numbers with quantities
-  trailerNumber   String?       // Added trailer number
   palletCount     Int
-  status          RequestStatus @default(PENDING)
+  status          RequestStatus   @default(PENDING)
   routeInfo       String?
   additionalNotes String?
-  notes           String[]      @default([])
+  notes           String[]        @default([])
   createdBy       String        
-  creator         User          @relation("CreatedBy", fields: [createdBy], references: [id])
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  logs            RequestLog[]  @relation("RequestLogs")
-  deleted         Boolean       @default(false)
+  creator         User            @relation("CreatedBy", fields: [createdBy], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deleted         Boolean         @default(false)
   deletedAt       DateTime?
+  trailers        RequestTrailer[]
+  partDetails     PartDetail[]    // Link parts directly to request
+  logs            RequestLog[]    @relation("RequestLogs") // Add opposite relation
 
   @@index([createdBy])
 }
 
-// New model to store part numbers with quantities
+model Trailer {
+  id              String          @id @default(cuid())
+  trailerNumber   String          @unique
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  requests        RequestTrailer[]
+  partDetails     PartDetail[]    // Keep reference for querying parts by trailer
+}
+
+model RequestTrailer {
+  id              String        @id @default(cuid())
+  requestId       String
+  request         MustGoRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  trailerId       String
+  trailer         Trailer       @relation(fields: [trailerId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@unique([requestId, trailerId])
+  @@index([requestId])
+  @@index([trailerId])
+}
+
 model PartDetail {
   id              String        @id @default(cuid())
   partNumber      String
   quantity        Int
-  requestId       String
+  requestId       String        // Link to specific request
   request         MustGoRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  trailerId       String        // Link to specific trailer
+  trailer         Trailer       @relation(fields: [trailerId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @default(now()) @updatedAt
 
+  @@unique([partNumber, requestId, trailerId]) // Allow same part in different requests/trailers
   @@index([requestId])
+  @@index([trailerId])
 }
 
 model RequestLog {

@@ -8,13 +8,17 @@ import type { SessionUser } from "@/lib/types";
 interface PartData {
   partNumber: string;
   quantity: number;
+  shipmentNumber: string;
+  plant: string;
+  trailerNumber: string;
+  routeInfo: string;
 }
 
 interface RowData {
   shipmentNumber: string;
   plant: string;
   parts: PartData[];
-  trailerNumber: string;
+  routeInfo: string;
 }
 
 interface ValidationError {
@@ -29,6 +33,8 @@ interface ProcessResult {
   failedRows: number;
   errors: ValidationError[];
 }
+
+type SplitCriteria = "shipment" | "trailer" | "route" | "part";
 
 function validateRow(
   row: RowData,
@@ -49,6 +55,9 @@ function validateRow(
       if (!part.quantity || isNaN(part.quantity) || part.quantity <= 0) {
         errors.push(`Valid quantity is required for part ${idx + 1}`);
       }
+      if (!part.trailerNumber) {
+        errors.push(`Trailer number is required for part ${idx + 1}`);
+      }
     });
   }
 
@@ -58,54 +67,84 @@ function validateRow(
   };
 }
 
-function parseExcelBuffer(buffer: Buffer): RowData[] {
-  const workbook = XLSX.read(buffer);
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rawData = XLSX.utils.sheet_to_json(sheet);
+function groupDataByCriteria(
+  rawData: any[],
+  splitCriteria: SplitCriteria
+): RowData[] {
+  const groupedData: { [key: string]: any } = {};
 
-  // Skip header row and group rows by shipment number
-  const groupedData = rawData.reduce(
-    (acc: { [key: string]: any }, row: any) => {
-      const shipmentNumber = row["SHIPMENT"]?.toString() || "";
-      if (!acc[shipmentNumber]) {
-        acc[shipmentNumber] = {
-          shipmentNumber,
-          plant: row["PLANT"]?.toString() || "",
-          trailerNumber: row["1ST truck #"]?.toString() || "",
-          parts: [],
-        };
-      }
+  rawData.forEach((row) => {
+    const shipmentNumber = row["SHIPMENT"]?.toString() || "";
+    const plant = row["PLANT"]?.toString() || "";
+    const trailerNumber = row["1ST truck #"]?.toString() || "";
+    const routeInfo = row["INSTRUCTIONS"]?.toString() || "";
+    const partNumber = row["DELPHI P/N"]?.toString() || "";
+    const quantity = parseInt(
+      row["MG QTY"]?.toString() || row["qty"]?.toString() || "0"
+    );
 
-      acc[shipmentNumber].parts.push({
-        partNumber: row["DELPHI P/N"]?.toString() || "",
-        quantity: parseInt(row["qty"]?.toString() || "0"),
-      });
+    if (!partNumber || !quantity) return;
 
-      return acc;
-    },
-    {}
-  );
+    // Create a unique key based on the split criteria
+    let groupKey: string;
+    switch (splitCriteria) {
+      case "shipment":
+        groupKey = shipmentNumber;
+        break;
+      case "trailer":
+        groupKey = `${trailerNumber || "no-trailer"}-${shipmentNumber}`;
+        break;
+      case "route":
+        groupKey = `${routeInfo || "no-route"}-${shipmentNumber}`;
+        break;
+      case "part":
+        groupKey = partNumber;
+        break;
+      default:
+        groupKey = shipmentNumber;
+    }
+
+    if (!groupedData[groupKey]) {
+      groupedData[groupKey] = {
+        shipmentNumber:
+          splitCriteria === "part" ? `${partNumber}-group` : shipmentNumber,
+        plant,
+        routeInfo,
+        parts: [],
+      };
+    }
+
+    // Add part with its context
+    groupedData[groupKey].parts.push({
+      partNumber,
+      quantity,
+      shipmentNumber,
+      plant,
+      trailerNumber,
+      routeInfo,
+    });
+  });
 
   return Object.values(groupedData);
 }
 
-function parseRawText(text: string): RowData[] {
-  // Decode URL-encoded text
+function parseExcelBuffer(
+  buffer: Buffer,
+  splitCriteria: SplitCriteria
+): RowData[] {
+  const workbook = XLSX.read(buffer);
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rawData = XLSX.utils.sheet_to_json(sheet);
+  return groupDataByCriteria(rawData, splitCriteria);
+}
+
+function parseRawText(text: string, splitCriteria: SplitCriteria): RowData[] {
   const decodedText = decodeURIComponent(text);
-
-  // Split into lines and remove empty lines
   const lines = decodedText.split(/[\r\n]+/).filter((line) => line.trim());
-
-  // Skip header row
   const dataLines = lines.slice(1);
 
-  const groupedData: { [key: string]: any } = {};
-
-  dataLines.forEach((line) => {
-    // Split by tab or comma
+  const rawData = dataLines.map((line) => {
     const parts = line.split(/[\t,]+/).map((part) => part.trim());
-
-    // Map array indices to expected columns based on header
     const [
       shipmentNumber,
       delivery,
@@ -118,29 +157,17 @@ function parseRawText(text: string): RowData[] {
       qty,
     ] = parts;
 
-    if (!shipmentNumber) return; // Skip empty rows
-
-    if (!groupedData[shipmentNumber]) {
-      groupedData[shipmentNumber] = {
-        shipmentNumber,
-        plant,
-        trailerNumber,
-        parts: [],
-      };
-    }
-
-    // Use mgQty if available, otherwise fall back to qty
-    const quantity = parseInt(mgQty || qty || "0");
-
-    if (delphiPN) {
-      groupedData[shipmentNumber].parts.push({
-        partNumber: delphiPN,
-        quantity,
-      });
-    }
+    return {
+      SHIPMENT: shipmentNumber,
+      PLANT: plant,
+      "DELPHI P/N": delphiPN,
+      "MG QTY": mgQty || qty,
+      INSTRUCTIONS: instructions,
+      "1ST truck #": trailerNumber,
+    };
   });
 
-  return Object.values(groupedData);
+  return groupDataByCriteria(rawData, splitCriteria);
 }
 
 async function processRows(
@@ -155,7 +182,6 @@ async function processRows(
     errors: [],
   };
 
-  // First verify the user exists
   const user = await prisma.user.findUnique({
     where: { id: userId },
   });
@@ -186,26 +212,96 @@ async function processRows(
     }
 
     try {
-      // Calculate total pallet count based on all parts
+      // Group parts by trailer
+      const partsByTrailer = row.parts.reduce((acc, part) => {
+        if (!acc[part.trailerNumber]) {
+          acc[part.trailerNumber] = [];
+        }
+        acc[part.trailerNumber].push(part);
+        return acc;
+      }, {} as { [key: string]: PartData[] });
+
+      // Calculate total pallet count across all parts
       const totalPalletCount = row.parts.reduce((acc, part) => {
-        return acc + Math.ceil(part.quantity / 24); // 24 pieces per pallet
+        return acc + Math.ceil(part.quantity / 24);
       }, 0);
 
-      await prisma.mustGoRequest.create({
-        data: {
-          shipmentNumber: row.shipmentNumber,
-          plant: row.plant,
-          trailerNumber: row.trailerNumber,
-          palletCount: totalPalletCount,
-          createdBy: userId,
-          partDetails: {
-            create: row.parts.map((part) => ({
-              partNumber: part.partNumber,
-              quantity: part.quantity,
-            })),
+      // Use transaction to ensure data consistency
+      await prisma.$transaction(async (tx) => {
+        // Create the request first
+        const request = await tx.mustGoRequest.create({
+          data: {
+            shipmentNumber: row.shipmentNumber,
+            plant: row.plant,
+            routeInfo: row.routeInfo,
+            palletCount: totalPalletCount,
+            createdBy: userId,
+            logs: {
+              create: {
+                action: `Request created with ${row.parts.length} part number(s)`,
+                performer: {
+                  connect: {
+                    id: userId,
+                  },
+                },
+              },
+            },
           },
-        },
+        });
+
+        // Process each trailer and its parts
+        for (const [trailerNumber, parts] of Object.entries(partsByTrailer)) {
+          // Create or find the trailer
+          const trailer = await tx.trailer.upsert({
+            where: {
+              trailerNumber,
+            },
+            create: {
+              trailerNumber,
+            },
+            update: {},
+          });
+
+          // Link trailer to request
+          await tx.requestTrailer.create({
+            data: {
+              request: {
+                connect: {
+                  id: request.id,
+                },
+              },
+              trailer: {
+                connect: {
+                  id: trailer.id,
+                },
+              },
+            },
+          });
+
+          // Create part details for this trailer
+          await Promise.all(
+            parts.map((part) =>
+              tx.partDetail.create({
+                data: {
+                  partNumber: part.partNumber,
+                  quantity: part.quantity,
+                  request: {
+                    connect: {
+                      id: request.id,
+                    },
+                  },
+                  trailer: {
+                    connect: {
+                      id: trailer.id,
+                    },
+                  },
+                },
+              })
+            )
+          );
+        }
       });
+
       result.successfulRows++;
     } catch (error) {
       console.error("Error processing row:", error);
@@ -241,14 +337,16 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const text = formData.get("text") as string | null;
+    const splitCriteria =
+      (formData.get("splitCriteria") as SplitCriteria) || "shipment";
 
     let rows: RowData[] = [];
 
     if (file) {
       const buffer = Buffer.from(await file.arrayBuffer());
-      rows = parseExcelBuffer(buffer);
+      rows = parseExcelBuffer(buffer, splitCriteria);
     } else if (text) {
-      rows = parseRawText(text);
+      rows = parseRawText(text, splitCriteria);
     } else {
       return NextResponse.json(
         { error: "No file or text provided" },

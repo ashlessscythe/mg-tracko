@@ -16,40 +16,60 @@ export async function GET(req: Request) {
     }
 
     const user = session.user as SessionUser;
+    console.log("User role:", user.role); // Debug log
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
     const includeDeleted = searchParams.get("includeDeleted") === "true";
 
+    // Base where clause
     const where: Prisma.MustGoRequestWhereInput = {
       ...(status && { status: status as RequestStatus }),
-      ...(search && {
-        OR: [
-          {
-            shipmentNumber: {
-              contains: search,
-              mode: Prisma.QueryMode.insensitive,
+      ...(!includeDeleted && { deleted: false }),
+    };
+
+    // Add search conditions if search param exists
+    if (search) {
+      where.OR = [
+        {
+          shipmentNumber: {
+            contains: search,
+            mode: Prisma.QueryMode.insensitive,
+          },
+        },
+        {
+          partDetails: {
+            some: {
+              partNumber: {
+                contains: search,
+                mode: Prisma.QueryMode.insensitive,
+              },
             },
           },
-          {
-            partDetails: {
-              some: {
-                partNumber: {
+        },
+        {
+          trailers: {
+            some: {
+              trailer: {
+                trailerNumber: {
                   contains: search,
                   mode: Prisma.QueryMode.insensitive,
                 },
               },
             },
           },
-        ],
-      }),
-      ...(user.role !== "ADMIN" &&
-        user.role === "CUSTOMER_SERVICE" && {
-          createdBy: user.id,
-        }),
-      ...(!includeDeleted && { deleted: false }),
-    };
+        },
+      ];
+    }
+
+    // Add role-based filtering
+    if (user.role === "CUSTOMER_SERVICE") {
+      where.createdBy = user.id;
+    }
+    // Admin sees all requests
+
+    console.log("Query where clause:", where); // Debug log
 
     const requests = await prisma.mustGoRequest.findMany({
       where,
@@ -60,6 +80,11 @@ export async function GET(req: Request) {
             name: true,
             email: true,
             role: true,
+          },
+        },
+        trailers: {
+          include: {
+            trailer: true,
           },
         },
         partDetails: true,
@@ -81,6 +106,8 @@ export async function GET(req: Request) {
         createdAt: "desc",
       },
     });
+
+    console.log("Found requests:", requests.length); // Debug log
 
     return NextResponse.json(requests);
   } catch (error) {
@@ -117,6 +144,7 @@ export async function POST(req: Request) {
 
     const body = (await req.json()) as FormData & {
       parts: Array<{ partNumber: string; quantity: number }>;
+      trailerNumber: string;
     };
 
     const {
@@ -130,7 +158,7 @@ export async function POST(req: Request) {
     } = body;
 
     // Validate required fields
-    if (!shipmentNumber || !parts?.length || !palletCount) {
+    if (!shipmentNumber || !parts?.length || !palletCount || !trailerNumber) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -145,63 +173,100 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create request data object
-    const requestData: Prisma.MustGoRequestCreateInput = {
-      shipmentNumber,
-      plant,
-      trailerNumber,
-      palletCount,
-      routeInfo,
-      additionalNotes,
-      creator: {
-        connect: {
-          id: user.id,
+    // Create everything in a transaction to ensure data consistency
+    const result = await prisma.$transaction(async (tx) => {
+      // Create or find the trailer first
+      const trailer = await tx.trailer.upsert({
+        where: {
+          trailerNumber,
         },
-      },
-      partDetails: {
-        create: parts.map((part) => ({
-          partNumber: part.partNumber,
-          quantity: part.quantity,
-        })),
-      },
-      logs: {
         create: {
-          action: `Request created with ${parts.length} part number(s)`,
-          performer: {
-            connect: {
-              id: user.id,
+          trailerNumber,
+        },
+        update: {},
+      });
+
+      // Create the request
+      const request = await tx.mustGoRequest.create({
+        data: {
+          shipmentNumber,
+          plant,
+          palletCount,
+          routeInfo,
+          additionalNotes,
+          createdBy: user.id,
+          trailers: {
+            create: {
+              trailer: {
+                connect: {
+                  id: trailer.id,
+                },
+              },
+            },
+          },
+          logs: {
+            create: {
+              action: `Request created with ${parts.length} part number(s)`,
+              performedBy: user.id,
             },
           },
         },
-      },
-    };
+      });
 
-    // Create the request
-    const request = await prisma.mustGoRequest.create({
-      data: requestData,
-      include: {
-        creator: {
-          select: {
-            name: true,
-            email: true,
-            role: true,
+      // Create part details with both request and trailer connections
+      await Promise.all(
+        parts.map((part) =>
+          tx.partDetail.create({
+            data: {
+              partNumber: part.partNumber,
+              quantity: part.quantity,
+              request: {
+                connect: {
+                  id: request.id,
+                },
+              },
+              trailer: {
+                connect: {
+                  id: trailer.id,
+                },
+              },
+            },
+          })
+        )
+      );
+
+      // Return complete request with all relations
+      return tx.mustGoRequest.findUnique({
+        where: { id: request.id },
+        include: {
+          creator: {
+            select: {
+              name: true,
+              email: true,
+              role: true,
+            },
           },
-        },
-        partDetails: true,
-        logs: {
-          include: {
-            performer: {
-              select: {
-                name: true,
-                role: true,
+          trailers: {
+            include: {
+              trailer: true,
+            },
+          },
+          partDetails: true,
+          logs: {
+            include: {
+              performer: {
+                select: {
+                  name: true,
+                  role: true,
+                },
               },
             },
           },
         },
-      },
+      });
     });
 
-    return NextResponse.json(request, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("Error in POST:", error);
     return NextResponse.json(

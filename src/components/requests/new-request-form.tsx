@@ -22,9 +22,13 @@ export default function NewRequestForm() {
   const [formData, setFormData] = useState<FormData>({
     shipmentNumber: "",
     plant: "",
-    parts: [],
+    trailers: [
+      {
+        trailerNumber: "",
+        parts: [],
+      },
+    ],
     palletCount: 1,
-    trailerNumber: "",
     routeInfo: "",
     additionalNotes: "",
     status: RequestStatus.PENDING,
@@ -60,9 +64,19 @@ export default function NewRequestForm() {
         throw new Error("Plant must be exactly 4 alphanumeric characters");
       }
 
+      // Validate trailer number since it's required in the new schema
+      if (!formData.trailers[0].trailerNumber) {
+        throw new Error("Trailer number is required");
+      }
+
       const requestData = {
         ...formData,
-        parts,
+        trailers: [
+          {
+            ...formData.trailers[0],
+            parts,
+          },
+        ],
       };
 
       const response = await fetch("/api/requests", {
@@ -84,7 +98,9 @@ export default function NewRequestForm() {
         description: "Request created successfully",
       });
 
-      router.push("/requests");
+      // Navigate to the new request's detail page
+      router.refresh(); // Refresh all server components
+      router.push(`/requests/${data.id}`);
     } catch (error) {
       toast({
         title: "Error",
@@ -103,6 +119,16 @@ export default function NewRequestForm() {
     const { name, value } = e.target;
     if (name === "parts") {
       setRawPartInput(value);
+    } else if (name === "trailerNumber") {
+      setFormData((prev) => ({
+        ...prev,
+        trailers: [
+          {
+            ...prev.trailers[0],
+            trailerNumber: value,
+          },
+        ],
+      }));
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -140,12 +166,13 @@ export default function NewRequestForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="trailerNumber">Trailer Number</Label>
+        <Label htmlFor="trailerNumber">Trailer Number *</Label>
         <Input
           id="trailerNumber"
           name="trailerNumber"
-          value={formData.trailerNumber || ""}
+          value={formData.trailers[0].trailerNumber}
           onChange={handleChange}
+          required
           placeholder="Enter trailer number"
         />
       </div>

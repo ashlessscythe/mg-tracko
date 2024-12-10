@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { Menu, Moon, Sun, X } from "lucide-react";
+import { Menu, Moon, Sun, X, Github } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -100,6 +100,17 @@ export function Header() {
             <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
             <span className="sr-only">Toggle theme</span>
           </button>
+          {!user && (
+            <Link
+              href="https://github.com/ashlessscythe/expi-trako"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <Github className="h-4 w-4" />
+              <span className="sr-only">GitHub repository</span>
+            </Link>
+          )}
         </div>
       </div>
 

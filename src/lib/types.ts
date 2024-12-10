@@ -16,6 +16,30 @@ export interface PartDetail {
   id: string;
   partNumber: string;
   quantity: number;
+  requestId: string;
+  trailerId: string;
+  trailer: {
+    id: string;
+    trailerNumber: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Trailer {
+  id: string;
+  trailerNumber: string;
+  partDetails: PartDetail[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestTrailer {
+  id: string;
+  requestId: string;
+  trailerId: string;
+  trailer: Trailer;
+  createdAt: string;
 }
 
 export interface RequestCreator {
@@ -29,7 +53,7 @@ export interface RequestDetail {
   id: string;
   shipmentNumber: string;
   plant?: string | null;
-  trailerNumber?: string | null;
+  trailers: RequestTrailer[];
   partDetails: PartDetail[];
   palletCount: number;
   status: RequestStatus;
@@ -56,10 +80,12 @@ export interface RequestLog {
 export interface FormData {
   shipmentNumber: string;
   plant?: string | null;
-  trailerNumber?: string | null;
-  parts: Array<{
-    partNumber: string;
-    quantity: number;
+  trailers: Array<{
+    trailerNumber: string;
+    parts: Array<{
+      partNumber: string;
+      quantity: number;
+    }>;
   }>;
   palletCount: number;
   routeInfo?: string | null;
