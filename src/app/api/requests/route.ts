@@ -16,6 +16,7 @@ export async function GET(req: Request) {
     }
 
     const user = session.user as SessionUser;
+    console.log("User role:", user.role);
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
@@ -24,32 +25,45 @@ export async function GET(req: Request) {
 
     const where: Prisma.MustGoRequestWhereInput = {
       ...(status && { status: status as RequestStatus }),
-      ...(search && {
-        OR: [
-          {
-            shipmentNumber: {
-              contains: search,
-              mode: Prisma.QueryMode.insensitive,
+      ...(!includeDeleted && { deleted: false }),
+    };
+
+    if (search) {
+      where.OR = [
+        {
+          shipmentNumber: {
+            contains: search,
+            mode: Prisma.QueryMode.insensitive,
+          },
+        },
+        {
+          partDetails: {
+            some: {
+              partNumber: {
+                contains: search,
+                mode: Prisma.QueryMode.insensitive,
+              },
             },
           },
-          {
-            partDetails: {
-              some: {
-                partNumber: {
+        },
+        {
+          trailers: {
+            some: {
+              trailer: {
+                trailerNumber: {
                   contains: search,
                   mode: Prisma.QueryMode.insensitive,
                 },
               },
             },
           },
-        ],
-      }),
-      ...(user.role !== "ADMIN" &&
-        user.role === "CUSTOMER_SERVICE" && {
-          createdBy: user.id,
-        }),
-      ...(!includeDeleted && { deleted: false }),
-    };
+        },
+      ];
+    }
+
+    if (user.role === "CUSTOMER_SERVICE") {
+      where.createdBy = user.id;
+    }
 
     const requests = await prisma.mustGoRequest.findMany({
       where,
@@ -60,6 +74,11 @@ export async function GET(req: Request) {
             name: true,
             email: true,
             role: true,
+          },
+        },
+        trailers: {
+          include: {
+            trailer: true,
           },
         },
         partDetails: true,
@@ -115,22 +134,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = (await req.json()) as FormData & {
-      parts: Array<{ partNumber: string; quantity: number }>;
-    };
+    const body = (await req.json()) as FormData;
 
     const {
       shipmentNumber,
       plant,
-      parts,
+      trailers,
       palletCount,
       routeInfo,
       additionalNotes,
-      trailerNumber,
     } = body;
 
     // Validate required fields
-    if (!shipmentNumber || !parts?.length || !palletCount) {
+    if (!shipmentNumber || !trailers?.length || !palletCount) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -145,63 +161,112 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create request data object
-    const requestData: Prisma.MustGoRequestCreateInput = {
-      shipmentNumber,
-      plant,
-      trailerNumber,
-      palletCount,
-      routeInfo,
-      additionalNotes,
-      creator: {
-        connect: {
-          id: user.id,
-        },
-      },
-      partDetails: {
-        create: parts.map((part) => ({
-          partNumber: part.partNumber,
-          quantity: part.quantity,
-        })),
-      },
-      logs: {
-        create: {
-          action: `Request created with ${parts.length} part number(s)`,
-          performer: {
-            connect: {
-              id: user.id,
+    // Validate trailers and parts
+    for (const trailer of trailers) {
+      if (!trailer.trailerNumber) {
+        return NextResponse.json(
+          { error: "All trailer numbers are required" },
+          { status: 400 }
+        );
+      }
+      if (!trailer.parts?.length) {
+        return NextResponse.json(
+          {
+            error: `Trailer ${trailer.trailerNumber} must have at least one part number`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Create everything in a transaction to ensure data consistency
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the request first
+      const request = await tx.mustGoRequest.create({
+        data: {
+          shipmentNumber,
+          plant,
+          palletCount,
+          routeInfo,
+          additionalNotes,
+          createdBy: user.id,
+          logs: {
+            create: {
+              action: `Request created with ${trailers.length} trailer(s)`,
+              performedBy: user.id,
             },
           },
         },
-      },
-    };
+      });
 
-    // Create the request
-    const request = await prisma.mustGoRequest.create({
-      data: requestData,
-      include: {
-        creator: {
-          select: {
-            name: true,
-            email: true,
-            role: true,
+      // Process each trailer and its parts
+      for (const trailerData of trailers) {
+        // Create or find the trailer
+        const trailer = await tx.trailer.upsert({
+          where: {
+            trailerNumber: trailerData.trailerNumber,
           },
-        },
-        partDetails: true,
-        logs: {
-          include: {
-            performer: {
-              select: {
-                name: true,
-                role: true,
+          create: {
+            trailerNumber: trailerData.trailerNumber,
+          },
+          update: {},
+        });
+
+        // Link trailer to request
+        await tx.requestTrailer.create({
+          data: {
+            requestId: request.id,
+            trailerId: trailer.id,
+          },
+        });
+
+        // Create part details for this trailer
+        await Promise.all(
+          trailerData.parts.map((part) =>
+            tx.partDetail.create({
+              data: {
+                partNumber: part.partNumber,
+                quantity: part.quantity,
+                requestId: request.id,
+                trailerId: trailer.id,
+              },
+            })
+          )
+        );
+      }
+
+      // Return complete request with all relations
+      return tx.mustGoRequest.findUnique({
+        where: { id: request.id },
+        include: {
+          creator: {
+            select: {
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          trailers: {
+            include: {
+              trailer: true,
+            },
+          },
+          partDetails: true,
+          logs: {
+            include: {
+              performer: {
+                select: {
+                  name: true,
+                  role: true,
+                },
               },
             },
           },
         },
-      },
+      });
     });
 
-    return NextResponse.json(request, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("Error in POST:", error);
     return NextResponse.json(

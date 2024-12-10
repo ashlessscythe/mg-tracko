@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Header } from "@/components/header";
 import { useToast } from "@/hooks/use-toast";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -27,6 +34,8 @@ interface ProcessResult {
   }>;
 }
 
+type SplitCriteria = "shipment" | "trailer" | "route" | "part";
+
 export default function BulkUploadPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -34,6 +43,7 @@ export default function BulkUploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ProcessResult | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
+  const [splitCriteria, setSplitCriteria] = useState<SplitCriteria>("shipment");
 
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>,
@@ -45,6 +55,7 @@ export default function BulkUploadPage() {
     setResult(null);
 
     const formData = new FormData(event.currentTarget);
+    formData.append("splitCriteria", splitCriteria);
 
     try {
       const response = await fetch("/api/bulk-upload", {
@@ -95,7 +106,7 @@ export default function BulkUploadPage() {
   }
 
   return (
-    <>
+    <div>
       <Header />
       <div className="container mx-auto p-4">
         <h1 className="text-2xl font-bold mb-4">
@@ -107,6 +118,33 @@ export default function BulkUploadPage() {
             {error}
           </div>
         )}
+
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold mb-2">Split Criteria</h2>
+          <div className="max-w-xs">
+            <Select
+              value={splitCriteria}
+              onValueChange={(value: SplitCriteria) => setSplitCriteria(value)}
+            >
+              <SelectTrigger className="text-foreground bg-background border border-border rounded-md shadow-lg">
+                <SelectValue placeholder="Select split criteria" />
+              </SelectTrigger>
+              <SelectContent className="text-foreground bg-background border border-border rounded-md shadow-lg">
+                <SelectItem value="shipment">
+                  Split by Shipment Number
+                </SelectItem>
+                <SelectItem value="trailer">Split by Trailer Number</SelectItem>
+                <SelectItem value="route">
+                  Split by Route Information
+                </SelectItem>
+                <SelectItem value="part">Split by Part Number</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-2 text-sm text-gray-600">
+              Choose how to group the data into separate Must Go requests.
+            </p>
+          </div>
+        </div>
 
         <div className="grid gap-4">
           <Card className="p-4">
@@ -161,12 +199,17 @@ export default function BulkUploadPage() {
             <li>PLANT</li>
             <li>DELPHI P/N (required)</li>
             <li>MG QTY (required)</li>
+            <li>INSTRUCTIONS (for route information)</li>
             <li>1ST truck # or 2ND truck # (for trailer number)</li>
           </ul>
+          <p className="mt-2 text-blue-600">
+            Note: The INSTRUCTIONS column will be used to store route
+            information for each shipment.
+          </p>
         </div>
 
         <Dialog open={showResultModal} onOpenChange={setShowResultModal}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {result?.success ? (
@@ -233,6 +276,6 @@ export default function BulkUploadPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </>
+    </div>
   );
 }

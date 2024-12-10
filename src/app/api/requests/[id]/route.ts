@@ -9,9 +9,29 @@ import type {
   UpdateRequestData,
   PartDetail,
 } from "@/lib/types";
-import { isWarehouse } from "@/lib/auth";
+import { isWarehouse, isAdmin, isCustomerService } from "@/lib/auth";
 
-// GET /api/requests/[id] - Get a single request by ID
+interface Part {
+  partNumber: string;
+  quantity: number;
+}
+
+interface TrailerWithParts {
+  trailerNumber: string;
+  parts: Part[];
+}
+
+type DbPartDetail = Omit<PartDetail, "createdAt" | "updatedAt"> & {
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+interface PartChange {
+  key: string;
+  part: Part;
+  trailerNumber: string;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -41,7 +61,16 @@ export async function GET(
             role: true,
           },
         },
-        partDetails: true,
+        trailers: {
+          include: {
+            trailer: true,
+          },
+        },
+        partDetails: {
+          include: {
+            trailer: true,
+          },
+        },
         logs: {
           include: {
             performer: {
@@ -72,7 +101,6 @@ export async function GET(
   }
 }
 
-// PATCH /api/requests/[id] - Update request status, add note, or edit request details
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
@@ -153,7 +181,16 @@ export async function PATCH(
               role: true,
             },
           },
-          partDetails: true,
+          trailers: {
+            include: {
+              trailer: true,
+            },
+          },
+          partDetails: {
+            include: {
+              trailer: true,
+            },
+          },
           logs: {
             include: {
               performer: {
@@ -176,17 +213,35 @@ export async function PATCH(
     // This is a request edit
     const request = await prisma.mustGoRequest.findUnique({
       where: { id: params.id },
-      include: { creator: true, partDetails: true },
+      include: {
+        creator: true,
+        trailers: {
+          include: {
+            trailer: true,
+          },
+        },
+        partDetails: {
+          include: {
+            trailer: true,
+          },
+        },
+      },
     });
 
     if (!request) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
+    const authUser: AuthUser = {
+      id: user.id,
+      role: user.role,
+    };
+
     // Check if user has permission to edit
     if (
-      user.role !== "ADMIN" &&
-      (user.role !== "CUSTOMER_SERVICE" || request.createdBy !== user.id)
+      !isAdmin(authUser) &&
+      !isWarehouse(authUser) &&
+      !(isCustomerService(authUser) && request.createdBy === user.id)
     ) {
       return NextResponse.json(
         { error: "You don't have permission to edit this request" },
@@ -197,15 +252,21 @@ export async function PATCH(
     const {
       shipmentNumber,
       plant,
-      trailerNumber,
+      trailers,
       palletCount,
       routeInfo,
       additionalNotes,
-      parts,
-    } = body;
+    } = body as {
+      shipmentNumber: string;
+      plant?: string;
+      trailers: TrailerWithParts[];
+      palletCount: number;
+      routeInfo?: string;
+      additionalNotes?: string;
+    };
 
     // Validate required fields
-    if (!shipmentNumber || !parts?.length || !palletCount) {
+    if (!shipmentNumber || !trailers?.length || !palletCount) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -230,12 +291,6 @@ export async function PATCH(
       changes.push(
         `plant from ${request.plant || "none"} to ${plant || "none"}`
       );
-    if (trailerNumber !== request.trailerNumber)
-      changes.push(
-        `trailer number from ${request.trailerNumber || "none"} to ${
-          trailerNumber || "none"
-        }`
-      );
     if (palletCount !== request.palletCount)
       changes.push(
         `pallet count from ${request.palletCount} to ${palletCount}`
@@ -247,111 +302,158 @@ export async function PATCH(
         }`
       );
     if (additionalNotes !== request.additionalNotes)
-      changes.push(`additional notes`);
+      changes.push(
+        `additional notes from ${request.additionalNotes || "none"} to ${
+          additionalNotes || "none"
+        }`
+      );
 
-    // Compare parts
-    const existingParts = new Set(
-      request.partDetails.map(
-        (p: PartDetail) => `${p.partNumber}:${p.quantity}`
-      )
-    );
-    const newParts = new Set(
-      parts.map(
-        (p: { partNumber: string; quantity: number }) =>
-          `${p.partNumber}:${p.quantity}`
-      )
-    );
+    // Track part number changes
+    const currentParts = request.partDetails.reduce<
+      Record<string, DbPartDetail>
+    >((acc, part) => {
+      const key = `${part.partNumber}-${part.trailer.trailerNumber}`;
+      acc[key] = part as DbPartDetail;
+      return acc;
+    }, {});
 
-    // Find removed parts
-    const removedParts = request.partDetails.filter(
-      (p: PartDetail) => !newParts.has(`${p.partNumber}:${p.quantity}`)
-    );
-    // Find added parts
-    const addedParts = parts.filter(
-      (p: { partNumber: string; quantity: number }) =>
-        !existingParts.has(`${p.partNumber}:${p.quantity}`)
+    const newParts: PartChange[] = trailers.flatMap((trailer) =>
+      trailer.parts.map((part) => ({
+        key: `${part.partNumber}-${trailer.trailerNumber}`,
+        part,
+        trailerNumber: trailer.trailerNumber,
+      }))
     );
 
-    // Create part change logs
-    const partLogs = [];
-    if (removedParts.length > 0) {
-      partLogs.push({
-        action: `Removed part numbers: ${removedParts
-          .map((p: PartDetail) => `${p.partNumber} (${p.quantity})`)
-          .join(", ")}`,
-        performedBy: user.id,
+    // Compare parts and log changes
+    const partChanges: string[] = [];
+    newParts.forEach(({ key, part, trailerNumber }) => {
+      const currentPart = currentParts[key];
+      if (!currentPart) {
+        partChanges.push(
+          `added part ${part.partNumber} (qty: ${part.quantity}) to trailer ${trailerNumber}`
+        );
+      } else if (currentPart.quantity !== part.quantity) {
+        partChanges.push(
+          `changed quantity for part ${part.partNumber} from ${currentPart.quantity} to ${part.quantity} in trailer ${trailerNumber}`
+        );
+      }
+      delete currentParts[key];
+    });
+
+    // Log removed parts
+    Object.values(currentParts).forEach((part) => {
+      partChanges.push(
+        `removed part ${part.partNumber} from trailer ${part.trailer.trailerNumber}`
+      );
+    });
+
+    // Update the request in a transaction
+    const updatedRequest = await prisma.$transaction(async (tx) => {
+      // Delete existing trailers and parts
+      await tx.requestTrailer.deleteMany({
+        where: { requestId: params.id },
       });
-    }
-    if (addedParts.length > 0) {
-      partLogs.push({
-        action: `Added part numbers: ${addedParts
-          .map(
-            (p: { partNumber: string; quantity: number }) =>
-              `${p.partNumber} (${p.quantity})`
-          )
-          .join(", ")}`,
-        performedBy: user.id,
+      await tx.partDetail.deleteMany({
+        where: { requestId: params.id },
       });
-    }
 
-    // Update the request
-    const updatedRequest = await prisma.mustGoRequest.update({
-      where: { id: params.id },
-      data: {
-        shipmentNumber,
-        plant,
-        trailerNumber,
-        palletCount,
-        routeInfo,
-        additionalNotes,
-        partDetails: {
-          deleteMany: {},
-          create: parts.map(
-            (part: { partNumber: string; quantity: number }) => ({
-              partNumber: part.partNumber,
-              quantity: part.quantity,
-            })
-          ),
-        },
-        logs: {
-          create: [
-            // Main changes log
-            ...(changes.length > 0
-              ? [
-                  {
-                    action: `Request edited: Changed ${changes.join(", ")}`,
-                    performedBy: user.id,
-                  },
-                ]
-              : []),
-            // Part change logs
-            ...partLogs,
-          ],
-        },
-      },
-      include: {
-        creator: {
-          select: {
-            name: true,
-            email: true,
-            role: true,
+      // Update the request
+      const request = await tx.mustGoRequest.update({
+        where: { id: params.id },
+        data: {
+          shipmentNumber,
+          plant,
+          palletCount,
+          routeInfo,
+          additionalNotes,
+          logs: {
+            create: [
+              ...(changes.length > 0
+                ? [
+                    {
+                      action: `Request details changed: ${changes.join(", ")}`,
+                      performedBy: user.id,
+                    },
+                  ]
+                : []),
+              ...(partChanges.length > 0
+                ? [
+                    {
+                      action: `Part changes: ${partChanges.join("; ")}`,
+                      performedBy: user.id,
+                    },
+                  ]
+                : []),
+            ],
           },
         },
-        partDetails: true,
-        logs: {
-          include: {
-            performer: {
-              select: {
-                name: true,
-                role: true,
+      });
+
+      // Create new trailers and parts
+      for (const trailerData of trailers) {
+        const trailer = await tx.trailer.upsert({
+          where: { trailerNumber: trailerData.trailerNumber },
+          create: { trailerNumber: trailerData.trailerNumber },
+          update: {},
+        });
+
+        await tx.requestTrailer.create({
+          data: {
+            request: { connect: { id: request.id } },
+            trailer: { connect: { id: trailer.id } },
+          },
+        });
+
+        await Promise.all(
+          trailerData.parts.map((part: Part) =>
+            tx.partDetail.create({
+              data: {
+                partNumber: part.partNumber,
+                quantity: part.quantity,
+                request: { connect: { id: request.id } },
+                trailer: { connect: { id: trailer.id } },
               },
+            })
+          )
+        );
+      }
+
+      return tx.mustGoRequest.findUnique({
+        where: { id: params.id },
+        include: {
+          creator: {
+            select: {
+              name: true,
+              email: true,
+              role: true,
             },
           },
-          orderBy: {
-            timestamp: "desc",
+          trailers: {
+            include: {
+              trailer: true,
+            },
+          },
+          partDetails: {
+            include: {
+              trailer: true,
+            },
+          },
+          logs: {
+            include: {
+              performer: {
+                select: {
+                  name: true,
+                  role: true,
+                },
+              },
+            },
+            orderBy: {
+              timestamp: "desc",
+            },
           },
         },
-      },
+      });
     });
 
     return NextResponse.json(updatedRequest);
@@ -370,7 +472,6 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/requests/[id] - Soft delete a request (admin only)
 export async function DELETE(
   req: Request,
   { params }: { params: { id: string } }

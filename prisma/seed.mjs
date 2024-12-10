@@ -97,6 +97,8 @@ async function clearDatabase() {
   console.log("Clearing database...");
   await prisma.requestLog.deleteMany();
   await prisma.partDetail.deleteMany();
+  await prisma.requestTrailer.deleteMany();
+  await prisma.trailer.deleteMany();
   await prisma.mustGoRequest.deleteMany();
   await prisma.user.deleteMany();
   console.log("Database cleared");
@@ -147,7 +149,7 @@ async function main() {
     `Created ${createdUsers.length} users (including default bob@bob.bob)`
   );
 
-  // Create must-go requests
+  // Create must-go requests with trailers and parts
   const requests = [];
   for (let i = 0; i < argv.count; i++) {
     // Generate 1-3 parts with quantities
@@ -159,15 +161,21 @@ async function main() {
 
     // Calculate total pallet count based on quantities
     const totalPalletCount = selectedParts.reduce((acc, part) => {
-      return acc + Math.ceil(part.quantity / 24); // 24 pieces per pallet
+      return acc + Math.ceil(part.quantity / 24);
     }, 0);
 
     // Generate 1-3 random notes
     const noteCount = faker.number.int({ min: 1, max: 3 });
-    const selectedNotes = Array.from({ length: noteCount }, generateNote).join(
-      " | "
-    );
+    const selectedNotes = Array.from({ length: noteCount }, generateNote);
 
+    // Create trailer first
+    const trailer = await prisma.trailer.create({
+      data: {
+        trailerNumber: generateTrailerNumber(),
+      },
+    });
+
+    // Create request
     const request = await prisma.mustGoRequest.create({
       data: {
         shipmentNumber: faker.string.alphanumeric({
@@ -175,42 +183,62 @@ async function main() {
           casing: "upper",
         }),
         plant: faker.helpers.arrayElement(["FV58", "PL45", "WH23", "DK89"]),
-        trailerNumber: generateTrailerNumber(),
         palletCount: totalPalletCount,
         status: statuses[Math.floor(Math.random() * statuses.length)],
         routeInfo: faker.location.streetAddress(),
-        additionalNotes: selectedNotes,
+        additionalNotes: selectedNotes.join(" | "),
+        notes: selectedNotes,
         createdBy:
           createdUsers[Math.floor(Math.random() * createdUsers.length)].id,
-        partDetails: {
-          create: selectedParts,
+        trailers: {
+          create: {
+            trailer: {
+              connect: {
+                id: trailer.id,
+              },
+            },
+          },
         },
-      },
-      include: {
-        partDetails: true,
       },
     });
-    requests.push(request);
-  }
-  console.log(`Created ${requests.length} must-go requests`);
 
-  // Create request logs
-  const logs = [];
-  for (const request of requests) {
-    const logCount = faker.number.int({ min: 1, max: 3 });
-    for (let i = 0; i < logCount; i++) {
-      const log = await prisma.requestLog.create({
-        data: {
-          mustGoRequestId: request.id,
-          action: faker.word.verb(),
-          performedBy:
-            createdUsers[Math.floor(Math.random() * createdUsers.length)].id,
-        },
-      });
-      logs.push(log);
-    }
+    // Create part details linked to both request and trailer
+    const parts = await Promise.all(
+      selectedParts.map((part) =>
+        prisma.partDetail.create({
+          data: {
+            partNumber: part.partNumber,
+            quantity: part.quantity,
+            request: {
+              connect: {
+                id: request.id,
+              },
+            },
+            trailer: {
+              connect: {
+                id: trailer.id,
+              },
+            },
+          },
+        })
+      )
+    );
+
+    // Create initial log
+    await prisma.requestLog.create({
+      data: {
+        mustGoRequestId: request.id,
+        action: `Request created with ${parts.length} part number(s)`,
+        performedBy:
+          createdUsers[Math.floor(Math.random() * createdUsers.length)].id,
+      },
+    });
+
+    requests.push({ ...request, parts });
   }
-  console.log(`Created ${logs.length} request logs`);
+  console.log(
+    `Created ${requests.length} must-go requests with trailers and parts`
+  );
 
   console.log("Seed completed successfully");
   console.log("\nDefault user created:");
