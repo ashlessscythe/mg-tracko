@@ -12,12 +12,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { RequestStatus } from "@prisma/client";
 import { useAuth } from "@/lib/auth-context";
 import { isWarehouse } from "@/lib/auth";
-import type { AuthUser, RequestDetail as RequestDetailType } from "@/lib/types";
+import type {
+  AuthUser,
+  RequestDetail as RequestDetailType,
+  PartDetail,
+} from "@/lib/types";
 
 interface RequestDetailProps {
   id: string;
@@ -32,6 +38,16 @@ export default function RequestDetail({ id }: RequestDetailProps) {
   const [updating, setUpdating] = useState(false);
   const [newStatus, setNewStatus] = useState<RequestStatus | "">("");
   const [note, setNote] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    shipmentNumber: "",
+    plant: "",
+    trailerNumber: "",
+    palletCount: 0,
+    routeInfo: "",
+    additionalNotes: "",
+    parts: [] as { partNumber: string; quantity: number }[],
+  });
 
   const fetchRequest = useCallback(async () => {
     try {
@@ -43,6 +59,18 @@ export default function RequestDetail({ id }: RequestDetailProps) {
       const data = await response.json();
       setRequest(data);
       setNewStatus(data.status);
+      setEditForm({
+        shipmentNumber: data.shipmentNumber,
+        plant: data.plant || "",
+        trailerNumber: data.trailerNumber || "",
+        palletCount: data.palletCount,
+        routeInfo: data.routeInfo || "",
+        additionalNotes: data.additionalNotes || "",
+        parts: data.partDetails.map((part: PartDetail) => ({
+          partNumber: part.partNumber,
+          quantity: part.quantity,
+        })),
+      });
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error
@@ -108,6 +136,68 @@ export default function RequestDetail({ id }: RequestDetailProps) {
     }
   };
 
+  const handleEdit = async () => {
+    setUpdating(true);
+    try {
+      const response = await fetch(`/api/requests/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update request");
+      }
+
+      setRequest(data);
+      setIsEditing(false);
+      toast({
+        title: "Success",
+        description: "Request updated successfully",
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to update request";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handlePartChange = (
+    index: number,
+    field: "partNumber" | "quantity",
+    value: string
+  ) => {
+    const newParts = [...editForm.parts];
+    if (field === "quantity") {
+      newParts[index] = { ...newParts[index], [field]: parseInt(value) || 0 };
+    } else {
+      newParts[index] = { ...newParts[index], [field]: value };
+    }
+    setEditForm({ ...editForm, parts: newParts });
+  };
+
+  const addPart = () => {
+    setEditForm({
+      ...editForm,
+      parts: [...editForm.parts, { partNumber: "", quantity: 0 }],
+    });
+  };
+
+  const removePart = (index: number) => {
+    const newParts = editForm.parts.filter((_, i) => i !== index);
+    setEditForm({ ...editForm, parts: newParts });
+  };
+
   const getStatusBadgeColor = (status: RequestStatus) => {
     switch (status) {
       case "PENDING":
@@ -136,17 +226,156 @@ export default function RequestDetail({ id }: RequestDetailProps) {
       }
     : null;
 
-  const canUpdateStatus = authUser ? isWarehouse(authUser) : false;
+  const canUpdateStatus = authUser
+    ? isWarehouse(authUser) && !request.deleted
+    : false;
+  const canEdit = authUser
+    ? (authUser.role === "ADMIN" ||
+        (authUser.role === "CUSTOMER_SERVICE" &&
+          request.creator.id === authUser.id)) &&
+      !request.deleted
+    : false;
   const notes = request.notes || [];
   const partDetails = request.partDetails || [];
+
+  if (isEditing) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Edit Request</h1>
+          <div className="space-x-2">
+            <Button variant="outline" onClick={() => setIsEditing(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={updating}>
+              {updating ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Request Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Shipment Number</Label>
+              <Input
+                value={editForm.shipmentNumber}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, shipmentNumber: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Plant (4 characters)</Label>
+              <Input
+                value={editForm.plant}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, plant: e.target.value })
+                }
+                maxLength={4}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Trailer Number</Label>
+              <Input
+                value={editForm.trailerNumber}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, trailerNumber: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Parts</Label>
+              <div className="space-y-2">
+                {editForm.parts.map((part, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder="Part Number"
+                      value={part.partNumber}
+                      onChange={(e) =>
+                        handlePartChange(index, "partNumber", e.target.value)
+                      }
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Quantity"
+                      value={part.quantity}
+                      onChange={(e) =>
+                        handlePartChange(index, "quantity", e.target.value)
+                      }
+                    />
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => removePart(index)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button onClick={addPart} variant="outline" size="sm">
+                  Add Part
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Pallet Count</Label>
+              <Input
+                type="number"
+                value={editForm.palletCount}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    palletCount: parseInt(e.target.value) || 0,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Route Info</Label>
+              <Input
+                value={editForm.routeInfo}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, routeInfo: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Additional Notes</Label>
+              <Textarea
+                value={editForm.additionalNotes}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, additionalNotes: e.target.value })
+                }
+                rows={4}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Request Details</h1>
-        <Button variant="outline" onClick={() => router.back()}>
-          Back
-        </Button>
+        <div className="space-x-2">
+          <Button variant="outline" onClick={() => router.back()}>
+            Back
+          </Button>
+          {canEdit && (
+            <Button onClick={() => setIsEditing(true)}>Edit Request</Button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -195,11 +424,14 @@ export default function RequestDetail({ id }: RequestDetailProps) {
               <div className="text-sm text-muted-foreground">Pallet Count</div>
               <div className="font-medium">{request.palletCount}</div>
             </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Status</div>
-              <Badge className={getStatusBadgeColor(request.status)}>
-                {request.status.replace("_", " ")}
-              </Badge>
+            <div className="flex gap-2 items-center">
+              <div>
+                <div className="text-sm text-muted-foreground">Status</div>
+                <Badge className={getStatusBadgeColor(request.status)}>
+                  {request.status.replace("_", " ")}
+                </Badge>
+              </div>
+              {request.deleted && <Badge variant="destructive">Deleted</Badge>}
             </div>
             {request.routeInfo && (
               <div>
@@ -235,6 +467,14 @@ export default function RequestDetail({ id }: RequestDetailProps) {
                 {new Date(request.createdAt).toLocaleString()}
               </div>
             </div>
+            {request.deleted && request.deletedAt && (
+              <div>
+                <div className="text-sm text-muted-foreground">Deleted At</div>
+                <div className="font-medium text-destructive">
+                  {new Date(request.deletedAt).toLocaleString()}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

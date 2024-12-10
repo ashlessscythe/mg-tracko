@@ -18,6 +18,13 @@ export interface PartDetail {
   quantity: number;
 }
 
+export interface RequestCreator {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
 export interface RequestDetail {
   id: string;
   shipmentNumber: string;
@@ -29,12 +36,10 @@ export interface RequestDetail {
   routeInfo?: string | null;
   additionalNotes?: string | null;
   notes: string[];
+  deleted: boolean;
+  deletedAt: string;
   createdAt: string;
-  creator: {
-    name: string;
-    email: string;
-    role: string;
-  };
+  creator: RequestCreator;
   logs: RequestLog[];
 }
 

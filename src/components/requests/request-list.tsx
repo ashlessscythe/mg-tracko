@@ -13,8 +13,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { RequestDetail } from "@/lib/types";
+import { useSession } from "next-auth/react";
 
 type SortableField = keyof Pick<
   RequestDetail,
@@ -26,21 +35,28 @@ type SortableField = keyof Pick<
   | "createdAt"
 >;
 
+type FilterStatus = RequestStatus | "ALL" | "DELETED";
+
 export default function RequestList() {
   const router = useRouter();
   const { toast } = useToast();
+  const { data: session } = useSession();
   const [requests, setRequests] = useState<RequestDetail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<RequestStatus | "ALL">(
-    "ALL"
-  );
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
   const [sortField, setSortField] = useState<SortableField>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [requestToDelete, setRequestToDelete] = useState<string | null>(null);
+
+  const isAdmin = session?.user?.role === "ADMIN";
 
   const fetchRequests = useCallback(async () => {
     try {
       let url = "/api/requests";
-      if (statusFilter !== "ALL") {
+      if (statusFilter === "DELETED") {
+        url += "?includeDeleted=true";
+      } else if (statusFilter !== "ALL") {
         url += `?status=${statusFilter}`;
       }
 
@@ -77,35 +93,112 @@ export default function RequestList() {
     }
   };
 
-  const sortedRequests = [...requests].sort((a, b) => {
-    let compareResult = 0;
+  const handleDeleteClick = (id: string) => {
+    setRequestToDelete(id);
+    setDeleteDialogOpen(true);
+  };
 
-    switch (sortField) {
-      case "shipmentNumber":
-        compareResult = a.shipmentNumber.localeCompare(b.shipmentNumber);
-        break;
-      case "plant":
-        compareResult = (a.plant || "").localeCompare(b.plant || "");
-        break;
-      case "trailerNumber":
-        compareResult = (a.trailerNumber || "").localeCompare(
-          b.trailerNumber || ""
-        );
-        break;
-      case "palletCount":
-        compareResult = a.palletCount - b.palletCount;
-        break;
-      case "status":
-        compareResult = a.status.localeCompare(b.status);
-        break;
-      case "createdAt":
-        compareResult =
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        break;
+  const handleDeleteConfirm = async () => {
+    if (!requestToDelete) return;
+
+    try {
+      const response = await fetch(`/api/requests/${requestToDelete}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete request");
+      }
+
+      toast({
+        title: "Success",
+        description: "Request deleted successfully",
+      });
+
+      // Reset dialog state
+      setDeleteDialogOpen(false);
+      setRequestToDelete(null);
+
+      // Refresh the requests list
+      fetchRequests();
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to delete request";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
     }
+  };
 
-    return sortDirection === "asc" ? compareResult : -compareResult;
-  });
+  const handleUndelete = async (id: string) => {
+    try {
+      const response = await fetch(`/api/requests/${id}/undelete`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to restore request");
+      }
+
+      toast({
+        title: "Success",
+        description: "Request restored successfully",
+      });
+
+      // Refresh the requests list
+      fetchRequests();
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to restore request";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const sortedRequests = [...requests]
+    .sort((a, b) => {
+      let compareResult = 0;
+
+      switch (sortField) {
+        case "shipmentNumber":
+          compareResult = a.shipmentNumber.localeCompare(b.shipmentNumber);
+          break;
+        case "plant":
+          compareResult = (a.plant || "").localeCompare(b.plant || "");
+          break;
+        case "trailerNumber":
+          compareResult = (a.trailerNumber || "").localeCompare(
+            b.trailerNumber || ""
+          );
+          break;
+        case "palletCount":
+          compareResult = a.palletCount - b.palletCount;
+          break;
+        case "status":
+          compareResult = a.status.localeCompare(b.status);
+          break;
+        case "createdAt":
+          compareResult =
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+      }
+
+      return sortDirection === "asc" ? compareResult : -compareResult;
+    })
+    .filter((request) => {
+      if (statusFilter === "DELETED") {
+        return request.deleted;
+      }
+      if (statusFilter === "ALL") {
+        return !request.deleted;
+      }
+      return !request.deleted && request.status === statusFilter;
+    });
 
   const getStatusBadgeColor = (status: RequestStatus) => {
     switch (status) {
@@ -142,6 +235,15 @@ export default function RequestList() {
             {status.replace("_", " ")}
           </Button>
         ))}
+        {isAdmin && (
+          <Button
+            variant={statusFilter === "DELETED" ? "default" : "outline"}
+            onClick={() => setStatusFilter("DELETED")}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Deleted
+          </Button>
+        )}
       </div>
 
       <Table>
@@ -218,7 +320,7 @@ export default function RequestList() {
                   {request.creator.role}
                 </span>
               </TableCell>
-              <TableCell>
+              <TableCell className="space-x-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -226,11 +328,52 @@ export default function RequestList() {
                 >
                   View
                 </Button>
+                {isAdmin && !request.deleted && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleDeleteClick(request.id)}
+                  >
+                    Delete
+                  </Button>
+                )}
+                {isAdmin && request.deleted && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleUndelete(request.id)}
+                  >
+                    Restore
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Request</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this request? This action can be
+              undone later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

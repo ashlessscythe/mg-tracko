@@ -35,6 +35,8 @@ model MustGoRequest {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   logs            RequestLog[]  @relation("RequestLogs")
+  deleted         Boolean       @default(false)
+  deletedAt       DateTime?
 
   @@index([createdBy])
 }
