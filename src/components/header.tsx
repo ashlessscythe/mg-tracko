@@ -18,11 +18,15 @@ export function Header() {
     ? [
         { href: "/dashboard", label: "Dashboard" },
         { href: "/requests", label: "Requests" },
+        // Show reports for both ADMIN and REPORT_RUNNER
+        ...(user.role === "ADMIN" || user.role === "REPORT_RUNNER"
+          ? [{ href: "/reports", label: "Reports" }]
+          : []),
+        // Admin-only links
         ...(user.role === "ADMIN"
           ? [
               { href: "/admin", label: "Admin Dashboard" },
               { href: "/admin/users", label: "User Management" },
-              { href: "/admin/reports", label: "Reports" },
             ]
           : []),
       ]

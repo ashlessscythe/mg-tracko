@@ -27,6 +27,13 @@ export default withAuth(
       }
     }
 
+    // Reports access control
+    if (pathname.startsWith("/reports")) {
+      if (token?.role !== "ADMIN" && token?.role !== "REPORT_RUNNER") {
+        return new NextResponse("Access Denied", { status: 403 });
+      }
+    }
+
     // Only allow active users (non-pending) to access protected routes
     if (token?.role === "PENDING") {
       return new NextResponse("Access Denied", { status: 403 });
@@ -45,6 +52,7 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/requests/:path*",
+    "/reports/:path*",
     "/api/requests/:path*",
     "/api/warehouse/:path*",
     "/api/admin/:path*",

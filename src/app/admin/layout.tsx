@@ -10,7 +10,11 @@ export default async function AdminLayout({
 }) {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user || session.user.role !== "ADMIN") {
+  // Allow both ADMIN and REPORT_RUNNER roles to access reports
+  if (
+    !session?.user ||
+    (session.user.role !== "ADMIN" && session.user.role !== "REPORT_RUNNER")
+  ) {
     redirect("/");
   }
 

@@ -32,6 +32,10 @@ export function isCustomerService(user: AuthUser): boolean {
   return user.role === "CUSTOMER_SERVICE" || user.role === "ADMIN";
 }
 
+export function isReportRunner(user: AuthUser): boolean {
+  return user.role === "REPORT_RUNNER" || user.role === "ADMIN";
+}
+
 export function hasPermission(user: AuthUser, allowedRoles: Role[]): boolean {
   return allowedRoles.includes(user.role) || user.role === "ADMIN";
 }

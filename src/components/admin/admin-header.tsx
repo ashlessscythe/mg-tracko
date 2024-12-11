@@ -11,7 +11,7 @@ export function AdminHeader() {
     { href: "/", label: `${APP_NAME}` },
     { href: "/admin", label: "Overview" },
     { href: "/admin/users", label: "Users" },
-    { href: "/admin/reports", label: "Reports" },
+    { href: "/reports", label: "Reports" },
   ];
 
   return (
