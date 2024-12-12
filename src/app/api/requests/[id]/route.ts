@@ -43,14 +43,14 @@ export async function GET(
     }
 
     const user = session.user as SessionUser;
+    const authUser: AuthUser = {
+      id: user.id,
+      role: user.role,
+    };
 
     const mustGoRequest = await prisma.mustGoRequest.findUnique({
       where: {
         id: params.id,
-        ...(user.role !== "ADMIN" &&
-          user.role === "CUSTOMER_SERVICE" && {
-            createdBy: user.id,
-          }),
       },
       include: {
         creator: {
@@ -91,7 +91,16 @@ export async function GET(
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    return NextResponse.json(mustGoRequest);
+    // Add canEdit flag based on user permissions
+    const canEdit =
+      isAdmin(authUser) ||
+      isWarehouse(authUser) ||
+      (isCustomerService(authUser) && mustGoRequest.createdBy === user.id);
+
+    return NextResponse.json({
+      ...mustGoRequest,
+      canEdit,
+    });
   } catch (error) {
     console.error("Error fetching request:", error);
     return NextResponse.json(
@@ -207,7 +216,19 @@ export async function PATCH(
         },
       });
 
-      return NextResponse.json(updatedRequest);
+      const authUser2: AuthUser = {
+        id: user.id,
+        role: user.role,
+      };
+
+      return NextResponse.json({
+        ...updatedRequest,
+        canEdit:
+          isAdmin(authUser2) ||
+          isWarehouse(authUser2) ||
+          (isCustomerService(authUser2) &&
+            updatedRequest.createdBy === user.id),
+      });
     }
 
     // This is a request edit
@@ -283,36 +304,72 @@ export async function PATCH(
 
     // Create a changes log message
     const changes: string[] = [];
-    if (shipmentNumber !== request.shipmentNumber)
+    if (shipmentNumber !== request.shipmentNumber) {
       changes.push(
         `shipment number from ${request.shipmentNumber} to ${shipmentNumber}`
       );
-    if (plant !== request.plant)
+    }
+    if (plant !== request.plant && (plant || request.plant)) {
       changes.push(
         `plant from ${request.plant || "none"} to ${plant || "none"}`
       );
-    if (palletCount !== request.palletCount)
+    }
+    if (palletCount !== request.palletCount) {
       changes.push(
         `pallet count from ${request.palletCount} to ${palletCount}`
       );
-    if (routeInfo !== request.routeInfo)
+    }
+    if (routeInfo !== request.routeInfo && (routeInfo || request.routeInfo)) {
       changes.push(
         `route info from ${request.routeInfo || "none"} to ${
           routeInfo || "none"
         }`
       );
-    if (additionalNotes !== request.additionalNotes)
+    }
+    if (
+      additionalNotes !== request.additionalNotes &&
+      (additionalNotes || request.additionalNotes)
+    ) {
       changes.push(
         `additional notes from ${request.additionalNotes || "none"} to ${
           additionalNotes || "none"
         }`
       );
+    }
+
+    // Create a map of current trailer numbers to their new numbers
+    const trailerMap = new Map<string, string>();
+    const currentTrailers = new Set(
+      request.trailers.map((t) => t.trailer.trailerNumber)
+    );
+    const newTrailers = new Set(trailers.map((t) => t.trailerNumber));
+
+    // Find trailer number changes by matching parts
+    request.partDetails.forEach((currentPart) => {
+      const currentTrailerNum = currentPart.trailer.trailerNumber;
+      if (!newTrailers.has(currentTrailerNum)) {
+        // Look for the same part in new trailers
+        for (const trailer of trailers) {
+          const matchingPart = trailer.parts.find(
+            (p) => p.partNumber === currentPart.partNumber
+          );
+          if (matchingPart) {
+            trailerMap.set(currentTrailerNum, trailer.trailerNumber);
+            break;
+          }
+        }
+      }
+    });
 
     // Track part number changes
     const currentParts = request.partDetails.reduce<
       Record<string, DbPartDetail>
     >((acc, part) => {
-      const key = `${part.partNumber}-${part.trailer.trailerNumber}`;
+      // Use mapped trailer number if it exists
+      const trailerNumber =
+        trailerMap.get(part.trailer.trailerNumber) ||
+        part.trailer.trailerNumber;
+      const key = `${part.partNumber}-${trailerNumber}`;
       acc[key] = part as DbPartDetail;
       return acc;
     }, {});
@@ -327,25 +384,42 @@ export async function PATCH(
 
     // Compare parts and log changes
     const partChanges: string[] = [];
+
+    // Log trailer number changes first
+    trailerMap.forEach((newNum, oldNum) => {
+      partChanges.push(`moved parts from trailer ${oldNum} to ${newNum}`);
+    });
+
+    // Then log part changes
     newParts.forEach(({ key, part, trailerNumber }) => {
       const currentPart = currentParts[key];
       if (!currentPart) {
-        partChanges.push(
-          `added part ${part.partNumber} (qty: ${part.quantity}) to trailer ${trailerNumber}`
+        // Only log as new if the part isn't in any mapped trailer
+        const isMovedPart = Array.from(trailerMap.values()).includes(
+          trailerNumber
         );
+        if (!isMovedPart) {
+          partChanges.push(
+            `updated part ${part.partNumber} quantity to ${part.quantity} in trailer ${trailerNumber}`
+          );
+        }
       } else if (currentPart.quantity !== part.quantity) {
         partChanges.push(
-          `changed quantity for part ${part.partNumber} from ${currentPart.quantity} to ${part.quantity} in trailer ${trailerNumber}`
+          `updated part ${part.partNumber} quantity from ${currentPart.quantity} to ${part.quantity} in trailer ${trailerNumber}`
         );
       }
       delete currentParts[key];
     });
 
-    // Log removed parts
+    // Log truly removed parts (not just moved to different trailer)
     Object.values(currentParts).forEach((part) => {
-      partChanges.push(
-        `removed part ${part.partNumber} from trailer ${part.trailer.trailerNumber}`
-      );
+      const oldTrailerNum = part.trailer.trailerNumber;
+      // Only log removal if the trailer wasn't remapped
+      if (!trailerMap.has(oldTrailerNum)) {
+        partChanges.push(
+          `removed part ${part.partNumber} from trailer ${oldTrailerNum}`
+        );
+      }
     });
 
     // Update the request in a transaction
@@ -456,7 +530,18 @@ export async function PATCH(
       });
     });
 
-    return NextResponse.json(updatedRequest);
+    const authUser2: AuthUser = {
+      id: user.id,
+      role: user.role,
+    };
+
+    return NextResponse.json({
+      ...updatedRequest,
+      canEdit:
+        isAdmin(authUser2) ||
+        isWarehouse(authUser2) ||
+        (isCustomerService(authUser2) && updatedRequest?.createdBy === user.id),
+    });
   } catch (error) {
     if (
       error instanceof Error &&

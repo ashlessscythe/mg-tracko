@@ -37,21 +37,21 @@ Frontend:
   - [X] All required fields.
   - [X] Validation.
 
-- [ ] Allow Customer Service to:
-  - [ ] View their own requests (`/requests` with filter).
-  - [ ] Edit their own requests via request-detail view (`/requests/[id]`).
-  - [ ] Track history of edits and status changes (logged notes per action).
+- [X] Allow Customer Service to:
+  - [X] View their own requests (`/requests` with filter).
+  - [X] Edit their own requests via request-detail view (`/requests/[id]`).
+  - [X] Track history of edits and status changes (logged notes per action).
 
-- [ ] Allow Warehouse Staff to:
-  - [ ] View all requests (`/requests` with sortable columns and filters by status).
-  - [ ] Modify request statuses (e.g., Pending, In Progress, Complete).
-  - [ ] Add notes to requests.
-  - [ ] View full action history for each request (`/requests/[id]`).
+- [X] Allow Warehouse Staff to:
+  - [X] View all requests (`/requests` with sortable columns and filters by status).
+  - [X] Modify request statuses (e.g., Pending, In Progress, Complete).
+  - [X] Add notes to requests.
+  - [X] View full action history for each request (`/requests/[id]`).
 
-- [ ] Allow Admins to:
-  - [ ] View all requests.
-  - [ ] Edit any request details.
-  - [ ] Delete requests with logged reason and timestamp.
+- [X] Allow Admins to:
+  - [X] View all requests.
+  - [X] Edit any request details.
+  - [X] Delete requests with logged reason and timestamp.
 
 - [X] Create request queue (`/requests`)
   - [X] Sortable columns.
