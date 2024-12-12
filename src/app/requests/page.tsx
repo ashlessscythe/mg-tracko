@@ -12,6 +12,9 @@ export const metadata: Metadata = {
   description: "View and manage must-go requests",
 };
 
+// Set revalidation to 0 to opt out of caching
+export const revalidate = 0;
+
 async function getRequests(userId: string, role: string) {
   // Only filter by creator for customer service
   // Admin and warehouse see all requests

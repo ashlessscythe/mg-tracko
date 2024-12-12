@@ -101,7 +101,13 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json(requests);
+    // Add cache control headers for revalidation
+    const response = NextResponse.json(requests);
+    response.headers.set(
+      "Cache-Control",
+      "no-cache, no-store, must-revalidate"
+    );
+    return response;
   } catch (error) {
     console.error("Error fetching requests:", error);
     return NextResponse.json(
@@ -266,7 +272,13 @@ export async function POST(req: Request) {
       });
     });
 
-    return NextResponse.json(result, { status: 201 });
+    // Add cache control headers to ensure clients revalidate
+    const response = NextResponse.json(result, { status: 201 });
+    response.headers.set(
+      "Cache-Control",
+      "no-cache, no-store, must-revalidate"
+    );
+    return response;
   } catch (error) {
     console.error("Error in POST:", error);
     return NextResponse.json(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,20 @@ export default function RequestList({
   const { toast } = useToast();
   const { user } = useAuth();
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Add auto-refresh functionality with a more reasonable interval (30 seconds)
+  useEffect(() => {
+    // Initial refresh to ensure we have fresh data
+    router.refresh();
+
+    // Set up interval for periodic refreshes
+    const intervalId = setInterval(() => {
+      router.refresh();
+    }, 30000); // Refresh every 30 seconds
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId);
+  }, [router]);
 
   if (!user) {
     return null;

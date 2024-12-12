@@ -20,12 +20,12 @@ Frontend:
 3. DASHBOARD & REQUESTS (Priority: HIGH)
 
 #### Backend:
-- [ ] Create and Test `/api/requests` endpoints:
-  - [ ] POST `/requests` - Allow CS to submit new requests.
-  - [ ] GET `/requests` - Retrieve all requests (warehouse/admin view).
-  - [ ] GET `/requests?user={id}` - Retrieve requests for a specific user (CS view).
-  - [ ] PATCH `/requests/{id}` - Allow status updates, field edits, and notes (Warehouse/Admin).
-  - [ ] DELETE `/requests/{id}` - Allow admins to delete requests with logged reason.
+- [X] Create and Test `/api/requests` endpoints:
+  - [X] POST `/requests` - Allow CS to submit new requests.
+  - [X] GET `/requests` - Retrieve all requests (warehouse/admin view).
+  - [X] GET `/requests?user={id}` - Retrieve requests for a specific user (CS view).
+  - [X] PATCH `/requests/{id}` - Allow status updates, field edits, and notes (Warehouse/Admin).
+  - [X] DELETE `/requests/{id}` - Allow admins to delete requests with logged reason.
 
 #### Frontend:
 - [X] Create dashboard (`/`)
@@ -62,6 +62,14 @@ Frontend:
   - [X] Display full request info.
   - [X] Enable status updates.
   - [X] Show action history.
+
+- [ ] Allow each partNumber to have status set via edit component
+  - [ ] add appropriate status to pn {pending, done, cancelled}
+
+- [ ] Add notifications for each role
+  - [ ] notification bell in header
+  - [ ] notifications on new req for whse
+  - [ ] notification on update for cs for own req
 
 #### Optional Features:
 - [ ] Add audit logs for all actions (viewable by admins):

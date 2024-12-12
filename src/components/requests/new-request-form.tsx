@@ -109,8 +109,10 @@ export default function NewRequestForm() {
         description: "Request created successfully",
       });
 
+      // First navigate to /requests
+      router.push("/requests");
+      // Then refresh to ensure the list updates
       router.refresh();
-      router.push(`/requests/${data.id}`);
     } catch (error) {
       toast({
         title: "Error",
