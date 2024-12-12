@@ -264,11 +264,27 @@ export default function RequestDetail({ id }: RequestDetailProps) {
   const getStatusBadgeColor = (status: RequestStatus) => {
     switch (status) {
       case "PENDING":
-        return "bg-yellow-500";
+        return "bg-yellow-500"; // Waiting to be processed
+      case "APPROVED":
+        return "bg-emerald-500"; // Request approved, ready to proceed
+      case "REJECTED":
+        return "bg-red-500"; // Request not approved
       case "IN_PROGRESS":
-        return "bg-blue-500";
+        return "bg-blue-500"; // Being worked on
+      case "LOADING":
+        return "bg-indigo-500"; // Parts being loaded
+      case "IN_TRANSIT":
+        return "bg-purple-500"; // Shipment on the way
+      case "ARRIVED":
+        return "bg-teal-500"; // Reached destination
       case "COMPLETED":
-        return "bg-green-500";
+        return "bg-green-500"; // Successfully finished
+      case "ON_HOLD":
+        return "bg-orange-500"; // Temporarily paused
+      case "CANCELLED":
+        return "bg-slate-500"; // Request cancelled
+      case "FAILED":
+        return "bg-rose-500"; // Critical failure
       default:
         return "bg-gray-500";
     }

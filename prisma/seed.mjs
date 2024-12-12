@@ -32,7 +32,20 @@ const roles = [
   "REPORT_RUNNER",
   "PENDING",
 ];
-const statuses = ["PENDING", "IN_PROGRESS", "COMPLETED"];
+
+const statuses = [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "IN_PROGRESS",
+  "LOADING",
+  "IN_TRANSIT",
+  "ARRIVED",
+  "COMPLETED",
+  "ON_HOLD",
+  "CANCELLED",
+  "FAILED",
+];
 
 const rolePasswords = {
   ADMIN: "adminpass",
@@ -41,6 +54,17 @@ const rolePasswords = {
   REPORT_RUNNER: "rrpass",
   PENDING: "pendingpass",
 };
+
+// Helper function to generate a random date within the past 2 months
+function generateRecentDate() {
+  const now = new Date();
+  const twoMonthsAgo = new Date(
+    now.getFullYear(),
+    now.getMonth() - 2,
+    now.getDate()
+  );
+  return faker.date.between({ from: twoMonthsAgo, to: now });
+}
 
 // Helper function to generate realistic part number with quantity
 function generatePartWithQuantity() {
@@ -168,10 +192,15 @@ async function main() {
     const noteCount = faker.number.int({ min: 1, max: 3 });
     const selectedNotes = Array.from({ length: noteCount }, generateNote);
 
+    // Generate a date within the past 2 months
+    const createdAt = generateRecentDate();
+
     // Create trailer first
     const trailer = await prisma.trailer.create({
       data: {
         trailerNumber: generateTrailerNumber(),
+        createdAt,
+        updatedAt: createdAt,
       },
     });
 
@@ -197,8 +226,11 @@ async function main() {
                 id: trailer.id,
               },
             },
+            createdAt,
           },
         },
+        createdAt,
+        updatedAt: createdAt,
       },
     });
 
@@ -219,6 +251,8 @@ async function main() {
                 id: trailer.id,
               },
             },
+            createdAt,
+            updatedAt: createdAt,
           },
         })
       )
@@ -231,6 +265,7 @@ async function main() {
         action: `Request created with ${parts.length} part number(s)`,
         performedBy:
           createdUsers[Math.floor(Math.random() * createdUsers.length)].id,
+        timestamp: createdAt,
       },
     });
 
