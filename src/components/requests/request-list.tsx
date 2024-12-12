@@ -185,7 +185,10 @@ export default function RequestList({
         </TableHeader>
         <TableBody>
           {requests.map((request) => (
-            <TableRow key={request.id}>
+            <TableRow
+              key={request.id}
+              className="hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors duration-150"
+            >
               <TableCell>
                 <Link
                   href={`/requests/${request.id}`}
